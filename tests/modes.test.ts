@@ -134,12 +134,13 @@ describe("modes", () => {
   let mock: Awaited<ReturnType<typeof createMockServer>>;
   let mcp: ReturnType<ReturnType<typeof createMcpClient>>;
   let baseDir: string;
+  let mockUrl: string;
 
   beforeEach(async () => {
     baseDir = new URL("..", import.meta.url).pathname;
     mock = createMockServer();
-    const url = await mock.listen();
-    mcp = createMcpClient({ baseDir, mockUrl: url });
+    mockUrl = await mock.listen();
+    mcp = createMcpClient({ baseDir, mockUrl });
     await mcp.init();
   });
 
@@ -182,7 +183,7 @@ describe("modes", () => {
   test("read-only: 13 tools, no write groups", async () => {
     const ro = createMcpClient({
       baseDir,
-      mockUrl: mock!.url ?? "",
+      mockUrl,
       env: { GOMODEL_READ_ONLY: "1" },
     });
     await ro.init();
@@ -237,7 +238,7 @@ describe("modes", () => {
   test("docs-only: 4 tools, no admin_* tools", async () => {
     const dc = createMcpClient({
       baseDir,
-      mockUrl: mock!.url ?? "",
+      mockUrl,
       env: { GOMODEL_ADMIN_API_KEY: "" },
     });
     await dc.init();
@@ -282,7 +283,7 @@ describe("modes", () => {
   test("read-only get_server_info: mode read_only, read_only true, write_groups 0", async () => {
     const ro = createMcpClient({
       baseDir,
-      mockUrl: mock!.url ?? "",
+      mockUrl,
       env: { GOMODEL_READ_ONLY: "1" },
     });
     await ro.init();
@@ -307,7 +308,7 @@ describe("modes", () => {
   test("docs-only get_server_info: mode docs_only, docs_only true, base_url null, api_key_preview null", async () => {
     const dc = createMcpClient({
       baseDir,
-      mockUrl: mock!.url ?? "",
+      mockUrl,
       env: { GOMODEL_ADMIN_API_KEY: "" },
     });
     await dc.init();

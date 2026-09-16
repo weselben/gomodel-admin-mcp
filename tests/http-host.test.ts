@@ -23,30 +23,61 @@ import { startMock, httpRpc } from "./helpers.mjs";
 const ROOT = new URL("..", import.meta.url).pathname;
 
 describe("HTTP host mode", () => {
-  let mock = { close: () => {} };
-  let child: ChildProcess | null = null;
+  const children: ChildProcess[] = [];
+
+  /** Kill + await a spawned child so no MCP process outlives its test.
+   *  Note: a signal-killed child keeps exitCode null — check signalCode too. */
+  async function stopChild(process_: ChildProcess | null) {
+    if (!process_ || process_.exitCode !== null || process_.signalCode !== null) return;
+    process_.kill("SIGKILL");
+    await Promise.race([
+      new Promise<void>((r) => process_.on("exit", () => r())),
+      new Promise((r) => setTimeout(r, 2000)),
+    ]);
+  }
+
+  /** Spawn the MCP server in HTTP host mode and wait for its port. */
+  async function startHost(mockUrl: string, port: number, httpToken: string | null = "test_http_token") {
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      GOMODEL_BASE_URL: mockUrl,
+      GOMODEL_ADMIN_API_KEY: "sk_gom_test",
+      HOST: "127.0.0.1",
+      PORT: String(port),
+    };
+    if (httpToken !== null) env.GOMODEL_HTTP_TOKEN = httpToken;
+    const child = spawn("bun", ["dist/index.js"], { cwd: ROOT, env, stdio: ["pipe", "pipe", "pipe"] });
+    child.stderr.on("data", () => {}); // discard startup banner
+    children.push(child);
+    for (let i = 0; i < 20; i++) {
+      try {
+        await fetch(`http://127.0.0.1:${port}/mcp`);
+        break;
+      } catch { await new Promise((r) => setTimeout(r, 150)); }
+    }
+    return child;
+  }
 
   afterAll(async () => {
-    try { await mock.close(); } catch {}
-    if (child?.exitCode === null) {
-      child.kill("SIGKILL");
-      await Promise.race([
-        new Promise<void>((r) => child!.on("exit", () => r())),
-        new Promise((r) => setTimeout(r, 2000)),
-      ]);
-    }
+    for (const child of children) await stopChild(child);
   });
 
   /* ---------------------------------------------------------------- */
-  /* (1) No / wrong bearer → 401                                      */
+  /* (1) No / wrong bearer -> 401 (from the MCP host, not the mock)   */
   /* ---------------------------------------------------------------- */
 
   test("wrong bearer token -> 401 unauthorized", async () => {
-    mock = await startMock();
+    const mock = await startMock();
+    const port = 3955 + (process.pid || 0) % 100;
+    let child: ChildProcess | null = null;
     try {
-      const res = await httpRpc(mock.url, "initialize", {}, "wrong_token");
+      child = await startHost(mock.url, port);
+      const res = await httpRpc(`http://127.0.0.1:${port}`, "initialize", {}, "wrong_token");
       expect(res.status).toBe(401);
-    } finally { mock.close(); }
+    } finally {
+      await stopChild(child);
+      mock.close();
+    }
   });
 
   /* ---------------------------------------------------------------- */
@@ -54,34 +85,18 @@ describe("HTTP host mode", () => {
   /* ---------------------------------------------------------------- */
 
   test("off-path -> 404", async () => {
-    mock = await startMock();
+    const mock = await startMock();
     const port = 3960 + (process.pid || 0) % 100;
-    child = spawn("bun", ["dist/index.js"], {
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        GOMODEL_BASE_URL: mock.url,
-        GOMODEL_ADMIN_API_KEY: "sk_gom_test",
-        GOMODEL_HTTP_TOKEN: "test_http_token",
-        HOST: "127.0.0.1",
-        PORT: String(port),
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    child.stderr.on("data", () => {}); // discard startup banner
-
-    // wait for listen
-    for (let i = 0; i < 20; i++) {
-      try {
-        await fetch(`http://127.0.0.1:${port}/mcp`);
-        break;
-      } catch { await new Promise((r) => setTimeout(r, 150)); }
-    }
+    let child: ChildProcess | null = null;
     try {
+      child = await startHost(mock.url, port);
       // GET /other without auth → 404 (path check is before auth check)
       const res = await fetch(`http://127.0.0.1:${port}/other`);
       expect(res.status).toBe(404);
-    } finally { mock.close(); }
+    } finally {
+      await stopChild(child);
+      mock.close();
+    }
   });
 
   /* ---------------------------------------------------------------- */
@@ -89,30 +104,11 @@ describe("HTTP host mode", () => {
   /* ---------------------------------------------------------------- */
 
   test("authorized: initialize -> server info, tools/call on separate request works", async () => {
-    mock = await startMock();
+    const mock = await startMock();
     const port = 3965 + (process.pid || 0) % 100;
-    child = spawn("bun", ["dist/index.js"], {
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        GOMODEL_BASE_URL: mock.url,
-        GOMODEL_ADMIN_API_KEY: "sk_gom_test",
-        GOMODEL_HTTP_TOKEN: "test_http_token",
-        HOST: "127.0.0.1",
-        PORT: String(port),
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    child.stderr.on("data", () => {});
-
-    // wait for listen
-    for (let i = 0; i < 20; i++) {
-      try {
-        await fetch(`http://127.0.0.1:${port}/mcp`);
-        break;
-      } catch { await new Promise((r) => setTimeout(r, 150)); }
-    }
+    let child: ChildProcess | null = null;
     try {
+      child = await startHost(mock.url, port);
       // 1) initialize -> server name
       const initRes = await httpRpc(
         `http://127.0.0.1:${port}`,
@@ -156,7 +152,10 @@ describe("HTTP host mode", () => {
       expect(infoObj.read_groups).toBe(9);
       expect(infoObj.write_groups).toBe(10);
       expect(infoObj.total_tools).toBe(23);
-    } finally { mock.close(); }
+    } finally {
+      await stopChild(child);
+      mock.close();
+    }
   });
 
   // SDK behavior: a batched [initialize, notif/initialized, tools/call] in ONE
@@ -165,28 +164,11 @@ describe("HTTP host mode", () => {
   // initialized, then rejects the remaining methods. Separate requests are the
   // correct pattern for stateless mode (covered by the test above).
   test("batched [initialize, notification, tools/call] -> 400 -32600", async () => {
-    mock = await startMock();
+    const mock = await startMock();
     const port = 3970 + (process.pid || 0) % 100;
-    child = spawn("bun", ["dist/index.js"], {
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        GOMODEL_BASE_URL: mock.url,
-        GOMODEL_ADMIN_API_KEY: "sk_gom_test",
-        GOMODEL_HTTP_TOKEN: "test_http_token",
-        HOST: "127.0.0.1",
-        PORT: String(port),
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    child.stderr.on("data", () => {});
-    for (let i = 0; i < 20; i++) {
-      try {
-        await fetch(`http://127.0.0.1:${port}/mcp`);
-        break;
-      } catch { await new Promise((r) => setTimeout(r, 150)); }
-    }
+    let child: ChildProcess | null = null;
     try {
+      child = await startHost(mock.url, port);
       const batch = [
         { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "0.0.0" } } },
         { jsonrpc: "2.0", method: "notifications/initialized" },
@@ -204,7 +186,10 @@ describe("HTTP host mode", () => {
       expect(res.status).toBe(400);
       const payload = await res.json() as { error?: { code?: number } };
       expect(payload.error?.code).toBe(-32600);
-    } finally { mock.close(); }
+    } finally {
+      await stopChild(child);
+      mock.close();
+    }
   });
 
   /* ---------------------------------------------------------------- */
@@ -212,7 +197,7 @@ describe("HTTP host mode", () => {
   /* ---------------------------------------------------------------- */
 
   test("no GOMODEL_HTTP_TOKEN -> no port open, child still running", async () => {
-    child = spawn("bun", ["dist/index.js"], {
+    const child = spawn("bun", ["dist/index.js"], {
       cwd: ROOT,
       env: {
         ...process.env,
@@ -223,6 +208,7 @@ describe("HTTP host mode", () => {
       stdio: ["pipe", "pipe", "pipe"],
     });
     child.stderr.on("data", () => {});
+    children.push(child);
 
     try {
       // must fail to connect — no port opened without GOMODEL_HTTP_TOKEN
@@ -234,11 +220,7 @@ describe("HTTP host mode", () => {
       await new Promise((r) => setTimeout(r, 500));
       expect(child.exitCode).toBeNull();
     } finally {
-      child.kill("SIGKILL");
-      await Promise.race([
-        new Promise<void>((r) => child!.on("exit", () => r())),
-        new Promise((r) => setTimeout(r, 2000)),
-      ]);
+      await stopChild(child);
     }
   });
 });
