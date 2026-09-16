@@ -63,17 +63,34 @@ GitHub.
 The full API contract is in [`spec/admin-swagger.json`](spec/admin-swagger.json)
 (admin paths of GoModel's embedded Swagger 2 spec).
 
-## Read-only mode
+## Passive token cost
 
-By default the server registers **everything**, including all mutating
-tools — the full Admin API / Admin UI surface. Set `GOMODEL_READ_ONLY=1`
-(or `true`) to register only read tools, docs tools, and `get_server_info`.
+The tool schemas sit in the model's context for the whole session once the
+MCP server is connected. Measured from `tools/list` (JSON payload, estimated
+tokens ≈ bytes / 4):
+
+| Mode                        | Tools | Schema bytes | ~tokens |
+| --------------------------- | ----: | -----------: | ------: |
+| Full (default)              |    79 |       47,776 |  ~11.9k |
+| `GOMODEL_READ_ONLY=1`       |    44 |       21,095 |   ~5.3k |
+| Docs-only (no API key)      |     4 |        2,321 |   ~0.6k |
+
+## Modes
+
+| Mode | Condition | Registered tools |
+| ---- | --------- | ---------------- |
+| Full (default) | API key set | all 79: 40 read, 36 write, 3 docs, `get_server_info` |
+| Read-only | API key set + `GOMODEL_READ_ONLY=1` | 44: 40 read, 3 docs, `get_server_info` |
+| Docs-only | no `GOMODEL_ADMIN_API_KEY` | 4: `docs_index`, `docs_search`, `docs_get`, `get_server_info` — every admin tool is hidden from the model's context, so the server acts as a pure docs MCP |
+
+`get_server_info` reports the active mode (`docs_only`, `read_only`, tool
+counts). In docs-only mode it never exposes the base URL or key preview.
 
 ## Configuration
 
 | Variable              | Required | Default                    | Description                                    |
 | --------------------- | -------- | -------------------------- | ---------------------------------------------- |
-| `GOMODEL_ADMIN_API_KEY` | yes    | —                          | Admin API key (`dashboard_access`)             |
+| `GOMODEL_ADMIN_API_KEY` | no     | —                          | Admin API key (`dashboard_access`); without it the server runs docs-only |
 | `GOMODEL_BASE_URL`    | no       | `http://localhost:8080`    | Base URL of the GoModel gateway                |
 | `GOMODEL_READ_ONLY`   | no       | unset (writes enabled)     | `1`/`true` to register read tools only         |
 | `GOMODEL_DOCS_REPO`   | no       | `ENTERPILOT/GoModel`       | GitHub repo the docs tools read from           |

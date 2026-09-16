@@ -9,12 +9,16 @@ import { registerDocsTools } from "./docs.js";
 
 const BASE_URL = (process.env.GOMODEL_BASE_URL ?? "http://localhost:8080").replace(/\/+$/, "");
 const API_KEY = process.env.GOMODEL_ADMIN_API_KEY ?? "";
+const HAS_KEY = API_KEY.length > 0;
 const READ_ONLY = ["1", "true"].includes((process.env.GOMODEL_READ_ONLY ?? "").toLowerCase());
 const MAX_BYTES = 256 * 1024;
 
-if (!API_KEY) {
-  console.error("gomodel-admin-mcp: GOMODEL_ADMIN_API_KEY is required");
-  process.exit(1);
+if (!HAS_KEY) {
+  // Docs-only mode: no admin key configured, so no admin tools are
+  // registered and nothing admin-related lands in the model's context.
+  console.error(
+    "gomodel-admin-mcp: GOMODEL_ADMIN_API_KEY not set — docs tools only, admin tools hidden",
+  );
 }
 
 function buildUrl(tool: AdminTool, args: Record<string, unknown>): string {
@@ -125,7 +129,10 @@ const server = new McpServer({
   version: "0.2.0",
 });
 
-for (const tool of ADMIN_TOOLS) {
+const REGISTERED_READ_TOOLS = HAS_KEY ? ADMIN_TOOLS : [];
+const REGISTERED_WRITE_TOOLS = HAS_KEY && !READ_ONLY ? [...WRITE_TOOLS, ...EXTRA_WRITE_TOOLS] : [];
+
+for (const tool of REGISTERED_READ_TOOLS) {
   const handler =
     tool.name === "get_live_logs"
       ? (args: Record<string, unknown>) => collectLiveLogs(args)
@@ -144,8 +151,6 @@ for (const tool of ADMIN_TOOLS) {
     },
   );
 }
-
-const REGISTERED_WRITE_TOOLS = READ_ONLY ? [] : [...WRITE_TOOLS, ...EXTRA_WRITE_TOOLS];
 
 for (const tool of REGISTERED_WRITE_TOOLS) {
   server.registerTool(
@@ -169,20 +174,21 @@ server.registerTool(
   "get_server_info",
   {
     description:
-      "Return the configuration this MCP server is bound to: the gateway base URL, the admin path prefix, a redacted preview of the API key, a count of registered tools, and whether read-only mode is active.",
+      "Return the configuration this MCP server is bound to: the gateway base URL, the admin path prefix, a redacted preview of the API key (when configured), a count of registered tools, and whether docs-only or read-only mode is active.",
     inputSchema: {},
   },
   async () => {
     const info = {
-      base_url: BASE_URL,
-      admin_endpoint: `${BASE_URL}/admin`,
-      api_key_preview: `sk_gom_...${API_KEY.slice(-4)}`,
+      base_url: HAS_KEY ? BASE_URL : null,
+      admin_endpoint: HAS_KEY ? `${BASE_URL}/admin` : null,
+      api_key_preview: HAS_KEY ? `sk_gom_...${API_KEY.slice(-4)}` : null,
+      docs_only: !HAS_KEY,
       protocol: "MCP over stdio",
       read_only: READ_ONLY,
-      read_tools: ADMIN_TOOLS.length,
+      read_tools: REGISTERED_READ_TOOLS.length,
       write_tools: REGISTERED_WRITE_TOOLS.length,
       docs_tools: docsToolCount,
-      total_tools: ADMIN_TOOLS.length + REGISTERED_WRITE_TOOLS.length + docsToolCount + 1,
+      total_tools: REGISTERED_READ_TOOLS.length + REGISTERED_WRITE_TOOLS.length + docsToolCount + 1,
     };
     return { content: [{ type: "text" as const, text: JSON.stringify(info, null, 2) }] };
   },
