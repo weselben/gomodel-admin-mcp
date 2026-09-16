@@ -159,14 +159,52 @@ describe("HTTP host mode", () => {
     } finally { mock.close(); }
   });
 
-  // SDK note: batched [initialize, notif/initialized, tools/call] in ONE POST
-  // fails with -32600 "Only one initialization request is allowed" because the
-  // SDK's StreamableHTTPServerTransport processes initialize mid-batch, sets
-  // _initialized, then rejects the tools/call that follows.  Separate requests
-  // are the correct pattern for stateless mode.
-  test.skip("batched [initialize, notification, tools/call] -> -32600", () => {
-    // Intentionally skipped — documented behavior above.
-    // Re-enable if SDK behavior changes.
+  // SDK behavior: a batched [initialize, notif/initialized, tools/call] in ONE
+  // POST is rejected with -32600 "Only one initialization request is allowed" —
+  // the stateless transport processes initialize mid-batch, marks itself
+  // initialized, then rejects the remaining methods. Separate requests are the
+  // correct pattern for stateless mode (covered by the test above).
+  test("batched [initialize, notification, tools/call] -> 400 -32600", async () => {
+    mock = await startMock();
+    const port = 3970 + (process.pid || 0) % 100;
+    child = spawn("bun", ["dist/index.js"], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        GOMODEL_BASE_URL: mock.url,
+        GOMODEL_ADMIN_API_KEY: "sk_gom_test",
+        GOMODEL_HTTP_TOKEN: "test_http_token",
+        HOST: "127.0.0.1",
+        PORT: String(port),
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    child.stderr.on("data", () => {});
+    for (let i = 0; i < 20; i++) {
+      try {
+        await fetch(`http://127.0.0.1:${port}/mcp`);
+        break;
+      } catch { await new Promise((r) => setTimeout(r, 150)); }
+    }
+    try {
+      const batch = [
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "0.0.0" } } },
+        { jsonrpc: "2.0", method: "notifications/initialized" },
+        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "get_server_info", arguments: {} } },
+      ];
+      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test_http_token",
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify(batch),
+      });
+      expect(res.status).toBe(400);
+      const payload = await res.json() as { error?: { code?: number } };
+      expect(payload.error?.code).toBe(-32600);
+    } finally { mock.close(); }
   });
 
   /* ---------------------------------------------------------------- */
