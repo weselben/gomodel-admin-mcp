@@ -1,5 +1,6 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import http from "node:http";
+import { readFileSync } from "node:fs";
 import { z } from "zod";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -28,6 +29,16 @@ function envInt(name: string, fallback: number, min: number, max: number): numbe
 const HOST = process.env.HOST ?? "127.0.0.1";
 const PORT = envInt("PORT", 3000, 1, 65535);
 const CACHE_TTL_SECONDS = envInt("GOMODEL_CACHE_TTL_SECONDS", 30, 1, 86400);
+
+// Single source of truth: the CI-owned version field in package.json.
+const PKG_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 const MAX_BYTES = 256 * 1024;
 
 if (!HAS_KEY) {
@@ -280,7 +291,7 @@ const REGISTERED_WRITE_GROUPS = HAS_KEY && !READ_ONLY ? WRITE_GROUPS : [];
  *  (stateless transport), once at startup in stdio mode. */
 function buildServer(): McpServer {
   const server = new McpServer(
-    { name: "gomodel-admin-mcp", version: "0.3.0" },
+    { name: "gomodel-admin-mcp", version: PKG_VERSION },
     { instructions: INSTRUCTIONS },
   );
 

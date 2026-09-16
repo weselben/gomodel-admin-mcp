@@ -120,7 +120,7 @@ GOMODEL_HTTP_TOKEN=$(openssl rand -hex 32) bun run start   # HTTP host mode on :
 Via bunx straight from a GitHub tag (no clone, no npm account):
 
 ```bash
-GOMODEL_ADMIN_API_KEY=sk_gom_... bunx github:weselben/gomodel-admin-mcp@v0.3.0
+GOMODEL_ADMIN_API_KEY=sk_gom_... bunx github:weselben/gomodel-admin-mcp#v0.0.2
 ```
 
 Docker (image published to GHCR on every release):
@@ -158,7 +158,7 @@ all variants — local build, `bunx`, docs-only, HTTP URL:
   "mcpServers": {
     "gomodel-admin": {
       "command": "bunx",
-      "args": ["github:weselben/gomodel-admin-mcp@v0.3.0"],
+      "args": ["github:weselben/gomodel-admin-mcp#v0.0.2"],
       "env": {
         "GOMODEL_BASE_URL": "http://localhost:8080",
         "GOMODEL_ADMIN_API_KEY": "sk_gom_..."
@@ -172,7 +172,7 @@ GoModel's own MCP feature (Admin UI → MCP servers) can consume this server
 both ways:
 
 - command transport: command `bunx`, args
-  `["github:weselben/gomodel-admin-mcp@v0.3.0"]`, env as above
+  `["github:weselben/gomodel-admin-mcp#v0.0.2"]`, env as above
 - URL transport: url `http://your-host:3000/mcp`, transport `streamable`,
   headers `Authorization: Bearer <GOMODEL_HTTP_TOKEN>`
 
