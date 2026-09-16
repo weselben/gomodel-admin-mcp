@@ -54,7 +54,7 @@ When editing code:
 
 There is no unit test suite. Verify with:
 
-- `bun run build` (typecheck + compile) — must pass.
+- `bun run lint` (oxlint) and `bun run build` (typecheck + compile) — must pass.
 - `scripts/smoke.mjs` against a live gateway (read-only by default;
   `SMOKE_WRITE=1` adds a safe virtual-model round-trip).
 - Manual stdio checks: op listing, unknown-op error, invalid-params error.
@@ -68,6 +68,13 @@ State plainly in a PR what was not covered against a live gateway.
 `README.md` is the user-facing doc. Keep it in sync: tool areas, env
 vars, the measured token table, and install paths. Comments in code stay
 sparse and say *why*, not *what*.
+
+The token table is CI-generated: `bun run measure-tokens` rewrites it on
+every release (before the version commit), so numbers always match the
+code. **Do not edit that table by hand** — any commit to `main` triggers a
+release cycle that regenerates it per release tag. Run the script locally
+to preview numbers after changing tool descriptions or groupings, but
+never commit manual tweaks to it.
 
 ## Commit and PR Format
 

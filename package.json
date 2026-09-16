@@ -17,7 +17,9 @@
   "scripts": {
     "build": "tsc",
     "start": "bun dist/index.js",
-    "dev": "bun --watch src/index.ts"
+    "dev": "bun --watch src/index.ts",
+    "lint": "oxlint src/",
+    "measure-tokens": "bun scripts/measure-tokens.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
@@ -25,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "oxlint": "^1.83.0",
     "typescript": "^5.8.0"
   }
 }

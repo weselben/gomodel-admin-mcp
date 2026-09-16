@@ -36,6 +36,14 @@ jobs:
       - name: build
         run: bun run build
 
+      - name: lint
+        run: bun run lint
+
+      # Refresh the measured tools/list token table in README.md so the
+      # version commit below carries up-to-date numbers.
+      - name: measure token table
+        run: bun run measure-tokens
+
       - name: compute new tag
         id: semantic
         uses: mathieudutour/github-tag-action@v6.2
