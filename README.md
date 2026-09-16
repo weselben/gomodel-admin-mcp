@@ -100,7 +100,7 @@ Measured from `tools/list` (JSON payload, tokens ≈ bytes / 4):
 | `GOMODEL_BASE_URL`      | no       | `http://localhost:8080` | Base URL of the GoModel gateway                 |
 | `GOMODEL_READ_ONLY`     | no       | unset (writes enabled)  | `1`/`true` registers read areas only            |
 | `GOMODEL_HTTP_TOKEN`    | no       | —                       | Set to serve streamable-HTTP MCP on `/mcp`; clients must send it as bearer |
-| `HOST`                  | no       | `0.0.0.0`               | HTTP bind address (HTTP mode)                   |
+| `HOST`                  | no       | `127.0.0.1`             | HTTP bind address (HTTP mode); `0.0.0.0` for containers only |
 | `PORT`                  | no       | `3000`                  | HTTP port (HTTP mode)                           |
 | `GOMODEL_CACHE_TTL_SECONDS` | no   | `30`                    | Read-cache TTL                                  |
 | `GOMODEL_DOCS_REPO`     | no       | `ENTERPILOT/GoModel`    | GitHub repo the docs tools read from            |
@@ -114,7 +114,7 @@ Local (Bun):
 bun install
 bun run build
 GOMODEL_ADMIN_API_KEY=sk_gom_... bun run start     # stdio
-GOMODEL_HTTP_TOKEN=change-me bun run start         # HTTP host mode on :3000
+GOMODEL_HTTP_TOKEN=$(openssl rand -hex 32) bun run start   # HTTP host mode on :3000
 ```
 
 Via bunx straight from a GitHub tag (no clone, no npm account):
@@ -127,7 +127,7 @@ Docker (image published to GHCR on every release):
 
 ```bash
 docker run -d --name gomodel-admin-mcp \
-  -e GOMODEL_HTTP_TOKEN=change-me \
+  -e GOMODEL_HTTP_TOKEN=$(openssl rand -hex 32) \
   -e GOMODEL_ADMIN_API_KEY=sk_gom_... \
   -e GOMODEL_BASE_URL=https://your-gateway.example \
   -p 3000:3000 \
@@ -136,6 +136,17 @@ docker run -d --name gomodel-admin-mcp \
 
 The image is distroless (no shell, non-root); HTTP mode only starts when
 `GOMODEL_HTTP_TOKEN` is set — without it the process never binds a port.
+
+Security notes for host mode:
+
+- The bind address defaults to `127.0.0.1`. Only containers need
+  `HOST=0.0.0.0` (the image sets it), because a published port cannot
+  reach a process bound to container loopback.
+- The MCP endpoint is plaintext HTTP with bearer auth. Put anything
+  internet-facing behind a TLS-terminating proxy; never publish port
+  3000 directly.
+- Generate the HTTP token (`openssl rand -hex 32`); a guessable token is
+  the only thing standing between the internet and your admin API.
 
 ## Wiring it up
 

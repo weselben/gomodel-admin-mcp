@@ -1,7 +1,15 @@
 # ---------------------------------------------------------------------------
 # Stage 1 — Build (alpine has the toolchain we need)
 # ---------------------------------------------------------------------------
-FROM oven/bun:1-alpine AS builder
+# Pinned bun release + its official SHA-256 checksum (SHASUMS256.txt). The
+# checksum-verified musl binary is what the runtime image executes, so both
+# must move together in a reviewed change.
+ARG BUN_VERSION=1.3.14
+# sha256(bun-linux-x64-musl.zip) from the bun-v1.3.14 release SHASUMS256.txt
+ARG BUN_SHA256=14bd9aedeebf1dba67e8def9531c89bc989ecfdf1de42e5bfcaf1b8cd9294719
+FROM oven/bun:1.3.14-alpine AS builder
+
+ENV BUN_VERSION=${BUN_VERSION} BUN_SHA256=${BUN_SHA256}
 
 WORKDIR /app
 
@@ -19,7 +27,8 @@ RUN bun install --frozen-lockfile \
 # build needs its loader + libstdc++/libgcc — staged with cp -L so symlinks
 # become real files for the distroless COPY.
 RUN apk add --no-cache wget unzip \
- && wget -O /tmp/bun.zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-musl.zip \
+ && wget -O /tmp/bun.zip "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64-musl.zip" \
+ && echo "${BUN_SHA256}  /tmp/bun.zip" | sha256sum -c - \
  && unzip -o /tmp/bun.zip -d /tmp/bunx \
  && mkdir -p /out/bin /out/lib \
  && mv /tmp/bunx/bun-linux-x64-musl/bun /out/bin/bun \
@@ -55,5 +64,9 @@ ENV NODE_ENV=production
 EXPOSE 3000
 
 # HTTP host mode activates when GOMODEL_HTTP_TOKEN is set at runtime
-# (streamable-HTTP MCP on 0.0.0.0:$PORT/mcp, default port 3000).
+# (streamable-HTTP MCP on HOST:$PORT/mcp). Containers must set HOST=0.0.0.0 —
+# a published port cannot reach a process bound to container loopback — and
+# belong behind a TLS-terminating proxy, never directly on the open internet.
+ENV HOST=0.0.0.0
+
 CMD ["/usr/local/bin/bun", "dist/index.js"]

@@ -7,12 +7,12 @@
       "env": {
         // Optional: override base URL when the gateway is not local.
         // "GOMODEL_BASE_URL": "http://localhost:8080",
-        // Mandatory: your admin API key for the gateway.
-        "GOMODEL_ADMIN_API_KEY": "sk_gom_REPLACE_ME"
         // Optional: cache TTL in seconds (default: 30).
         // "GOMODEL_CACHE_TTL_SECONDS": "300",
-        // Optional: read-only mode — only docs tools are registered.
-        // "GOMODEL_READ_ONLY": "1"
+        // Optional: read-only mode — hides all write groups.
+        // "GOMODEL_READ_ONLY": "1",
+        // Mandatory: your admin API key for the gateway.
+        "GOMODEL_ADMIN_API_KEY": "sk_gom_REPLACE_ME"
       }
     },
 
@@ -39,7 +39,8 @@
     // ── Variant 4: hosted HTTP (streamable-HTTP transport) ─────────
     // Prerequisite: start the server (container or bunx) with
     //   GOMODEL_HTTP_TOKEN set.  The server then listens on
-    //   HOST:PORT (default 0.0.0.0:3000) and serves MCP at /mcp.
+    //   HOST:PORT (default 127.0.0.1:3000; containers set HOST=0.0.0.0)
+    //   and serves MCP at /mcp.
     "gomodel-admin-http": {
       "transport": {
         "type": "http",
