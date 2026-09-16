@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "gomodel-admin": {
+      "command": "node",
+      "args": ["/absolute/path/to/gomodel-admin-mcp/dist/index.js"],
+      "env": {
+        "GOMODEL_BASE_URL": "http://localhost:8080",
+        "GOMODEL_ADMIN_API_KEY": "sk_gom_REPLACE_ME"
+      }
+    }
+  }
+}
