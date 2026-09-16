@@ -9,17 +9,17 @@
         // "GOMODEL_BASE_URL": "http://localhost:8080",
         // Mandatory: your admin API key for the gateway.
         "GOMODEL_ADMIN_API_KEY": "sk_gom_REPLACE_ME"
-        // Optional: cache TTL in seconds (default: 300).
+        // Optional: cache TTL in seconds (default: 30).
         // "GOMODEL_CACHE_TTL_SECONDS": "300",
         // Optional: read-only mode — only docs tools are registered.
         // "GOMODEL_READ_ONLY": "1"
       }
     },
 
-    // ── Variant 2: run via npx (no local install needed) ───────────
-    "gomodel-admin-npx": {
-      "command": "npx",
-      "args": ["-y", "gomodel-admin-mcp"],
+    // ── Variant 2: run via bunx from a GitHub tag (no install, no npm) ─
+    "gomodel-admin-bunx": {
+      "command": "bunx",
+      "args": ["github:weselben/gomodel-admin-mcp@v0.3.0"],
       "env": {
         "GOMODEL_BASE_URL": "http://localhost:8080",
         "GOMODEL_ADMIN_API_KEY": "sk_gom_REPLACE_ME"
@@ -37,7 +37,7 @@
     },
 
     // ── Variant 4: hosted HTTP (streamable-HTTP transport) ─────────
-    // Prerequisite: start the server (container or npx) with
+    // Prerequisite: start the server (container or bunx) with
     //   GOMODEL_HTTP_TOKEN set.  The server then listens on
     //   HOST:PORT (default 0.0.0.0:3000) and serves MCP at /mcp.
     "gomodel-admin-http": {

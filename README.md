@@ -115,10 +115,10 @@ GOMODEL_ADMIN_API_KEY=sk_gom_... bun run start     # stdio
 GOMODEL_HTTP_TOKEN=change-me bun run start         # HTTP host mode on :3000
 ```
 
-Via npx (no clone):
+Via bunx straight from a GitHub tag (no clone, no npm account):
 
 ```bash
-GOMODEL_ADMIN_API_KEY=sk_gom_... npx -y gomodel-admin-mcp
+GOMODEL_ADMIN_API_KEY=sk_gom_... bunx github:weselben/gomodel-admin-mcp@v0.3.0
 ```
 
 Docker (image published to GHCR on every release):
@@ -138,14 +138,14 @@ The image is distroless (no shell, non-root); HTTP mode only starts when
 ## Wiring it up
 
 stdio clients (`mcp.json`), see [`mcp.json.example`](mcp.json.example) for
-all variants — local build, `npx`, docs-only, HTTP URL:
+all variants — local build, `bunx`, docs-only, HTTP URL:
 
 ```json
 {
   "mcpServers": {
     "gomodel-admin": {
-      "command": "npx",
-      "args": ["-y", "gomodel-admin-mcp"],
+      "command": "bunx",
+      "args": ["github:weselben/gomodel-admin-mcp@v0.3.0"],
       "env": {
         "GOMODEL_BASE_URL": "http://localhost:8080",
         "GOMODEL_ADMIN_API_KEY": "sk_gom_..."
@@ -158,8 +158,8 @@ all variants — local build, `npx`, docs-only, HTTP URL:
 GoModel's own MCP feature (Admin UI → MCP servers) can consume this server
 both ways:
 
-- command transport: command `npx`, args `["-y", "gomodel-admin-mcp"]`, env
-  as above
+- command transport: command `bunx`, args
+  `["github:weselben/gomodel-admin-mcp@v0.3.0"]`, env as above
 - URL transport: url `http://your-host:3000/mcp`, transport `streamable`,
   headers `Authorization: Bearer <GOMODEL_HTTP_TOKEN>`
 
@@ -182,7 +182,10 @@ SMOKE_WRITE=1 bun scripts/smoke.mjs   # + safe virtual-model round-trip
 ## CI / Releases
 
 `.github/workflows/release.yml` (mirrors the RooForge flow): pushes to
-`main` touching code get an automatic patch bump, a GitHub Release, a
-`ghcr.io/weselben/gomodel-admin-mcp` image (tags `vX.Y.Z`, `latest`,
-`sha`), and — once the `NPM_TOKEN` repo secret is set — an npm publish so
-`npx -y gomodel-admin-mcp` always tracks the latest release.
+`main` touching code run the bun build check, compute the next patch tag,
+and — when the tag is new — commit `chore(release): vX.Y.Z [skip ci]`
+straight to `main` **before** tagging, so `main` always houses the version
+of the latest release (see `AGENTS.md`). Then the workflow creates the
+tag, the GitHub Release, and the `ghcr.io/weselben/gomodel-admin-mcp`
+image (tags `vX.Y.Z`, `latest`, `sha`). No npm publishing — install from
+GitHub tags or GHCR.

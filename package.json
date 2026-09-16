@@ -14,14 +14,10 @@
     "dist",
     "spec"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "tsc",
     "start": "bun dist/index.js",
-    "dev": "bun --watch src/index.ts",
-    "prepublishOnly": "bun run build"
+    "dev": "bun --watch src/index.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
