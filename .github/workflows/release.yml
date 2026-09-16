@@ -10,6 +10,7 @@ on:
       - Dockerfile
       - tsconfig.json
       - README.md
+      - tests/**
       - .github/**
 
 permissions:
@@ -38,6 +39,9 @@ jobs:
 
       - name: lint
         run: bun run lint
+
+      - name: test
+        run: bun test
 
       # Refresh the measured tools/list token table in README.md so the
       # version commit below carries up-to-date numbers.

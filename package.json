@@ -19,6 +19,7 @@
     "start": "bun dist/index.js",
     "dev": "bun --watch src/index.ts",
     "lint": "oxlint src/",
+    "test": "bun test",
     "measure-tokens": "bun scripts/measure-tokens.mjs"
   },
   "dependencies": {

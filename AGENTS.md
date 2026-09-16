@@ -52,16 +52,20 @@ When editing code:
 
 ## Testing
 
-There is no unit test suite. Verify with:
+```bash
+bun run lint         # oxlint
+bun run build        # tsc
+bun test             # bun:test against the swagger-derived mock server
+```
 
-- `bun run lint` (oxlint) and `bun run build` (typecheck + compile) — must pass.
-- `scripts/smoke.mjs` against a live gateway (read-only by default;
-  `SMOKE_WRITE=1` adds a safe virtual-model round-trip).
-- Manual stdio checks: op listing, unknown-op error, invalid-params error.
-- Manual HTTP checks when touching host mode: 401 without bearer,
-  authorized `initialize` + `tools/call`.
+The mock (`tests/mock-server.mjs`) generates spec-derived routes plus
+hand-added endpoints mirroring upstream handlers — param validation,
+scope checks, fault injection via `MOCK_FAULT`/`MOCK_HUGE` env vars.
+When upstream GoModel admin routes change, regenerate
+`spec/admin-swagger.json` and keep the coverage sweep green.
 
-State plainly in a PR what was not covered against a live gateway.
+Optional live docs gate: `DOCS_E2E=1 bun test` runs docs tools against
+the live GitHub repo (requires `GOMODEL_DOCS_REPO`).
 
 ## Documentation
 

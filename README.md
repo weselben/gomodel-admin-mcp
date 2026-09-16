@@ -174,12 +174,55 @@ client config.
 bun install
 bun run dev     # watch mode from source
 bun run build   # tsc → dist/
-bun scripts/smoke.mjs                 # read-only checks against a live gateway
-SMOKE_WRITE=1 bun scripts/smoke.mjs   # + safe virtual-model round-trip
+bun test        # bun:test against the swagger-derived mock server
 ```
 
-`scripts/smoke.mjs` needs `GOMODEL_ADMIN_API_KEY` (and optionally
-`GOMODEL_BASE_URL`) from the environment.
+The mock server (`tests/mock-server.mjs`) generates routes from
+`spec/admin-swagger.json` plus hand-added endpoints mirroring upstream
+GoModel admin handlers — param validation, scope checks, fault injection
+via `MOCK_FAULT`/`MOCK_HUGE` env vars. Run `bun test` to verify every
+tool against it before opening a PR. When upstream admin routes change,
+regenerate `spec/admin-swagger.json` and keep coverage green.
+
+Optional live docs gate: `DOCS_E2E=1 bun test`.
+
+### E2e test suite
+
+The e2e suite exercises the server through its transports:
+
+- **stdio tests** — `tests/modes.test.ts` verifies mode gating (full /
+  read-only / docs-only), tool counts, and `get_server_info` payloads.
+- **dispatch tests** — `tests/dispatch.test.ts` exercises the group-tool
+  dispatch layer: operation listing, unknown-op errors, field-level Zod
+  validation, cache_bypass stripping, SSE live logs, path-param routes.
+- **error tests** — `tests/errors.test.ts` covers fault injection
+  (`MOCK_FAULT`), auth failures (wrong key → 401, scoped key → 403),
+  connection refused, huge-response truncation (`MOCK_HUGE`), and 404
+  resource-not-found via path params.
+- **cache tests** — `tests/cache.test.ts` verifies in-memory TTL caching
+  (hit on repeat, bypass when requested, write invalidation).
+- **coverage sweep** — `tests/coverage.test.ts` walks every path+method
+  in `spec/admin-swagger.json`, maps it to exactly one group operation,
+  calls it through the MCP server against the mock, and checks the
+  reverse: every group operation has a route in spec or the known
+  hand-added extras. This is the sync guard when upstream routes change.
+- **http-host tests** — `tests/http-host.test.ts` spawns the MCP server
+  in HTTP host mode (`GOMODEL_HTTP_TOKEN` set) and tests the streamable
+  HTTP transport: 401 on wrong bearer, 404 off-path, authorized
+  `initialize` → `tools/call` on separate requests, and the no-token
+  case (no port opened, child still running in stdio mode).
+- **live docs gate** — `tests/docs.test.ts` is skipped unless
+  `DOCS_E2E=1`; it exercises `docs_index`/`docs_search` against the live
+  GitHub repo (`GOMODEL_DOCS_REPO`).
+
+Harness helpers live in `tests/helpers.mjs` (mock server starter, stdio
+JSON-RPC client, HTTP RPC client) and `tests/mock-server.mjs` (route
+table, error envelope, fault injection). All tests use `bun:test` with
+no external dependencies. Run a single file:
+
+```bash
+bun test tests/http-host.test.ts
+```
 
 ## CI / Releases
 
