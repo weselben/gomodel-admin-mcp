@@ -265,7 +265,6 @@ const INSTRUCTIONS = [
 
 const REGISTERED_READ_GROUPS = HAS_KEY ? READ_GROUPS : [];
 const REGISTERED_WRITE_GROUPS = HAS_KEY && !READ_ONLY ? WRITE_GROUPS : [];
-const DOCS_TOOL_COUNT = 3;
 
 /** Build a fully registered server. Called per request in HTTP mode
  *  (stateless transport), once at startup in stdio mode. */
