@@ -17,9 +17,17 @@ const API_KEY = process.env.GOMODEL_ADMIN_API_KEY ?? "";
 const HAS_KEY = API_KEY.length > 0;
 const READ_ONLY = ["1", "true"].includes((process.env.GOMODEL_READ_ONLY ?? "").toLowerCase());
 const HTTP_TOKEN = process.env.GOMODEL_HTTP_TOKEN ?? "";
-const HOST = process.env.HOST ?? "0.0.0.0";
-const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
-const CACHE_TTL_SECONDS = Number.parseInt(process.env.GOMODEL_CACHE_TTL_SECONDS ?? "30", 10);
+
+/** Parse a numeric env var; garbage input falls back instead of becoming NaN. */
+function envInt(name: string, fallback: number, min: number, max: number): number {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(value, min), max);
+}
+
+const HOST = process.env.HOST ?? "127.0.0.1";
+const PORT = envInt("PORT", 3000, 1, 65535);
+const CACHE_TTL_SECONDS = envInt("GOMODEL_CACHE_TTL_SECONDS", 30, 1, 86400);
 const MAX_BYTES = 256 * 1024;
 
 if (!HAS_KEY) {
@@ -99,8 +107,10 @@ async function adminGet(tool: AdminTool, args: Record<string, unknown>, bypass: 
   if (!res.ok) {
     throw new Error(`admin API ${res.status} ${res.statusText}: ${body.slice(0, 2000)}`);
   }
-  cacheSet(url, body);
-  return truncate(body);
+  // Cache the truncated text — a cache hit must not bypass MAX_BYTES.
+  const text = truncate(body);
+  cacheSet(url, text);
+  return text;
 }
 
 /** Collect SSE events from /admin/live/logs for a bounded window. */
