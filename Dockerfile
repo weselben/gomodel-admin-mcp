@@ -9,7 +9,9 @@ ARG BUN_VERSION=1.3.14
 ARG BUN_SHA256=14bd9aedeebf1dba67e8def9531c89bc989ecfdf1de42e5bfcaf1b8cd9294719
 FROM oven/bun:1.3.14-alpine AS builder
 
-ENV BUN_VERSION=${BUN_VERSION} BUN_SHA256=${BUN_SHA256}
+# Re-declared: global ARGs are not visible inside a stage by default.
+ARG BUN_VERSION
+ARG BUN_SHA256
 
 WORKDIR /app
 
