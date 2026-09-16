@@ -1,11 +1,53 @@
 {
   "mcpServers": {
+    // ── Variant 1: local stdio (as today) ──────────────────────────
     "gomodel-admin": {
       "command": "node",
       "args": ["/absolute/path/to/gomodel-admin-mcp/dist/index.js"],
       "env": {
+        // Optional: override base URL when the gateway is not local.
+        // "GOMODEL_BASE_URL": "http://localhost:8080",
+        // Optional: cache TTL in seconds (default: 30).
+        // "GOMODEL_CACHE_TTL_SECONDS": "300",
+        // Optional: read-only mode — hides all write groups.
+        // "GOMODEL_READ_ONLY": "1",
+        // Mandatory: your admin API key for the gateway.
+        "GOMODEL_ADMIN_API_KEY": "sk_gom_REPLACE_ME"
+      }
+    },
+
+    // ── Variant 2: run via bunx from a GitHub tag (no install, no npm) ─
+    "gomodel-admin-bunx": {
+      "command": "bunx",
+      "args": ["github:weselben/gomodel-admin-mcp@v0.3.0"],
+      "env": {
         "GOMODEL_BASE_URL": "http://localhost:8080",
         "GOMODEL_ADMIN_API_KEY": "sk_gom_REPLACE_ME"
+      }
+    },
+
+    // ── Variant 3: docs-only (no admin key → read-only docs tools) ─
+    "gomodel-admin-docs-only": {
+      "command": "node",
+      "args": ["/absolute/path/to/gomodel-admin-mcp/dist/index.js"],
+      "env": {
+        // No GOMODEL_ADMIN_API_KEY → only documentation tools are registered.
+        "GOMODEL_BASE_URL": "http://localhost:8080"
+      }
+    },
+
+    // ── Variant 4: hosted HTTP (streamable-HTTP transport) ─────────
+    // Prerequisite: start the server (container or bunx) with
+    //   GOMODEL_HTTP_TOKEN set.  The server then listens on
+    //   HOST:PORT (default 127.0.0.1:3000; containers set HOST=0.0.0.0)
+    //   and serves MCP at /mcp.
+    "gomodel-admin-http": {
+      "transport": {
+        "type": "http",
+        "url": "http://localhost:3000/mcp",
+        "headers": {
+          "Authorization": "Bearer REPLACE_WITH_HTTP_TOKEN"
+        }
       }
     }
   }

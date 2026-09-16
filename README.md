@@ -3,118 +3,162 @@
 [MCP](https://modelcontextprotocol.io) server for the
 [GoModel](https://github.com/ENTERPILOT/GoModel) admin REST API.
 
-Exposes **every** route of the GoModel admin API — the same surface the
-dashboard UI uses — as MCP tools: all reads, all mutations (virtual models,
-failover, pricing, budgets, rate limits, auth keys, users, guardrails,
-workflows, provider credentials, tagging, MCP servers, runtime settings),
-plus live documentation tools that search the GoModel docs straight from
-GitHub.
+Gradual-discovery group tools for the whole admin surface (the same
+operations the dashboard UI uses), live documentation tools that search the
+GoModel docs straight from GitHub, a TTL read cache that spares the Admin
+API, and an opt-in HTTP host mode so the server can run as a container
+anywhere. Runs on [Bun](https://bun.sh) or Node ≥ 18.
 
-## Tools
+## Architecture: grouped tools, gradual discovery
 
-79 tools, grouped by area:
+Instead of exposing 79 individual tools (~12k tokens of passive context),
+the server registers **one tool per area** — the same grouping as the list
+below (~5k tokens total). Each area tool takes:
 
-- **Runtime**: `get_runtime_config`, `get_runtime_settings`,
-  `get_provider_status`, `get_server_info` (base URL, admin endpoint,
-  redacted key preview, tool counts, read-only flag)
-- **Runtime control (write)**: `update_runtime_setting`, `refresh_runtime`
-- **Usage**: `get_usage_summary`, `get_usage_daily`, `get_usage_by_model`,
-  `get_usage_by_user_path`, `get_usage_by_label`, `get_usage_by_session`,
-  `get_usage_log`, `get_token_throughput`
-- **Usage control (write)**: `recalculate_usage_pricing`
-- **Audit**: `get_audit_log`, `get_audit_sessions`, `get_audit_stats`,
-  `get_audit_detail`, `get_audit_conversation`, `get_live_logs` (SSE, bounded)
-- **Cache**: `get_cache_overview`
-- **Models**: `list_models`, `list_model_categories`, `list_virtual_models`,
-  `list_model_pricing_overrides`
-- **Providers**: `list_provider_credentials`, `list_provider_credential_types`
-- **Provider control (write)**: `upsert_provider_credential`,
-  `delete_provider_credential`
-- **Governance**: `list_budgets`, `get_budget_settings`, `list_rate_limits`,
-  `get_tagging_settings`, `list_guardrails`, `list_guardrail_types`,
-  `list_failover_rules`, `list_auth_keys`, `get_access_overview`, `list_users`,
-  `list_plugins`
-- **Governance control (write)**: `upsert_budget`, `delete_budget`,
-  `update_budget_settings`, `reset_budget`, `reset_all_budgets`,
-  `reset_all_rate_limits`, `update_tagging_settings`, `upsert_guardrail`,
-  `delete_guardrail`, `upsert_user`, `delete_user`, `upsert_failover_rule`,
-  `delete_failover_rule`
-- **Auth keys (write)**: `create_auth_key`, `update_auth_key_labels`,
-  `update_auth_key_allowed_models`, `update_auth_key_dashboard_access`,
-  `deactivate_auth_key`
-- **Virtual models (write)**: `upsert_virtual_model` (create / update /
-  rename, alias or load-balanced redirect, or access policy),
-  `delete_virtual_model`
-- **Pricing overrides (write)**: `upsert_model_pricing_override`,
-  `delete_model_pricing_override` — selector scopes: global `/`,
-  provider-wide `provider/`, model-wide `model`, exact `provider/model`
-- **Rate limits (write)**: `upsert_rate_limit`, `delete_rate_limit`,
-  `reset_rate_limit`
-- **Workflows**: `list_workflows`, `list_workflow_guardrails`, `get_workflow`
-- **Workflows (write)**: `create_workflow`, `deactivate_workflow`
-- **MCP servers**: `list_mcp_servers`, `get_mcp_server_catalog`
-- **MCP servers (write)**: `upsert_mcp_server`, `delete_mcp_server`,
-  `reconnect_mcp_server`
-- **Docs (live from GitHub)**: `docs_index` (list doc pages from the repo's
-  Mintlify navigation), `docs_search` (ripgrep-style search over page
-  contents), `docs_get` (fetch one page) — anonymous raw.githubusercontent /
-  api.github.com reads, 15-minute in-memory cache
+```
+{ "operation": "<name>", "params": { ...operation arguments } }
+```
 
-The full API contract is in [`spec/admin-swagger.json`](spec/admin-swagger.json)
-(admin paths of GoModel's embedded Swagger 2 spec).
+Discovery ladder, harness-agnostic (plain tools/calls, no protocol exotics):
 
-## Passive token cost
+1. The server `instructions` teach the generic call pattern once.
+2. Omit `operation` → the area returns its operation list.
+3. An unknown `operation` errors with the valid list.
+4. Invalid `params` error with field-level messages (`Unrecognized key(s)`,
+   type mismatches) — correct the call and retry; a wrong guess costs one
+   failed call, not a re-read of the docs.
 
-The tool schemas sit in the model's context for the whole session once the
-MCP server is connected. Measured from `tools/list` (JSON payload, estimated
-tokens ≈ bytes / 4):
+Areas: `admin_runtime`, `admin_runtime_control`, `admin_usage`,
+`admin_usage_control`, `admin_audit`, `admin_cache`, `admin_models`,
+`admin_providers`, `admin_provider_control`, `admin_governance`,
+`admin_governance_control`, `admin_auth_keys`, `admin_virtual_models`,
+`admin_pricing_overrides`, `admin_rate_limits`, `admin_workflows`,
+`admin_workflows_control`, `admin_mcp_servers`, `admin_mcp_servers_control`
+— plus `docs_index`, `docs_search`, `docs_get`, `get_server_info`.
 
-| Mode                        | Tools | Schema bytes | ~tokens |
-| --------------------------- | ----: | -----------: | ------: |
-| Full (default)              |    79 |       47,776 |  ~11.9k |
-| `GOMODEL_READ_ONLY=1`       |    44 |       21,095 |   ~5.3k |
-| Docs-only (no API key)      |     4 |        2,321 |   ~0.6k |
+### What the areas cover
 
-## Modes
+- **runtime** — feature flags, dashboard settings, provider health
+- **runtime_control** — update settings, trigger runtime refresh
+- **usage** — summary, daily, by model / user path / label / session, log,
+  token throughput
+- **usage_control** — recalculate recorded usage pricing
+- **audit** — log, sessions, stats, detail, conversation, live SSE stream
+- **cache** — semantic/exact cache overview
+- **models** — registry, categories, virtual models, pricing overrides
+- **providers** / **provider_control** — credentials (redacted) and their
+  types; upsert / delete credentials
+- **governance** — budgets, rate limits, tagging, guardrails, failover,
+  auth keys, users, plugins
+- **governance_control** — budget/rate-limit/tagging/guardrail/user/failover
+  mutations
+- **auth_keys** — create keys, labels, allowed models, dashboard access,
+  deactivate
+- **virtual_models** — upsert (alias / load-balanced / access policy) and
+  delete
+- **pricing_overrides** — USD pricing by selector scope (`/`, `provider/`,
+  `model`, `provider/model`)
+- **rate_limits** — upsert, delete, reset counters
+- **workflows** / **workflows_control** — list/get, create, deactivate
+- **mcp_servers** / **mcp_servers_control** — list, catalogs; upsert,
+  delete, reconnect
+- **docs_*** — live GoModel docs from GitHub (Mintlify navigation index,
+  ripgrep-style search, page fetch; anonymous reads, 15-minute cache)
 
-| Mode | Condition | Registered tools |
-| ---- | --------- | ---------------- |
-| Full (default) | API key set | all 79: 40 read, 36 write, 3 docs, `get_server_info` |
-| Read-only | API key set + `GOMODEL_READ_ONLY=1` | 44: 40 read, 3 docs, `get_server_info` |
-| Docs-only | no `GOMODEL_ADMIN_API_KEY` | 4: `docs_index`, `docs_search`, `docs_get`, `get_server_info` — every admin tool is hidden from the model's context, so the server acts as a pure docs MCP |
+The full API contract is in [`spec/admin-swagger.json`](spec/admin-swagger.json).
 
-`get_server_info` reports the active mode (`docs_only`, `read_only`, tool
-counts). In docs-only mode it never exposes the base URL or key preview.
+## Read cache
+
+Read results are cached in memory for `GOMODEL_CACHE_TTL_SECONDS` (default
+30s) so repeated audits/usage queries don't hammer the Admin API. Pass
+`"params": { "cache_bypass": true }` to skip the cache for one call. Any
+write invalidates the whole cache.
+
+## Modes and passive token cost
+
+<!-- CI-generated: bun run measure-tokens rewrites the rows below on release. Do not edit them by hand. -->
+
+Measured from `tools/list` (JSON payload, tokens ≈ bytes / 4):
+
+| Mode | Tools | Schema bytes | ~tokens |
+| ------------------------- | ----: | -----------: | ------: |
+| Full (default, key set) | 23 | 20,296 | ~5.1k |
+| `GOMODEL_READ_ONLY=1` | 13 | 11,053 | ~2.8k |
+| Docs-only (no admin key) | 4 | 2,290 | ~573 |
+
+| Mode | Condition | What registers |
+| ---- | --------- | -------------- |
+| Full | key set | all areas incl. writes |
+| Read-only | key set + `GOMODEL_READ_ONLY=1` | read areas + docs + info |
+| Docs-only | no `GOMODEL_ADMIN_API_KEY` | `docs_*` + `get_server_info` only |
 
 ## Configuration
 
-| Variable              | Required | Default                    | Description                                    |
-| --------------------- | -------- | -------------------------- | ---------------------------------------------- |
-| `GOMODEL_ADMIN_API_KEY` | no     | —                          | Admin API key (`dashboard_access`); without it the server runs docs-only |
-| `GOMODEL_BASE_URL`    | no       | `http://localhost:8080`    | Base URL of the GoModel gateway                |
-| `GOMODEL_READ_ONLY`   | no       | unset (writes enabled)     | `1`/`true` to register read tools only         |
-| `GOMODEL_DOCS_REPO`   | no       | `ENTERPILOT/GoModel`       | GitHub repo the docs tools read from           |
-| `GOMODEL_DOCS_REF`    | no       | `main`                     | Branch/ref the docs tools read from            |
+| Variable                | Required | Default                 | Description                                     |
+| ----------------------- | -------- | ----------------------- | ----------------------------------------------- |
+| `GOMODEL_ADMIN_API_KEY` | no       | —                       | Admin API key; without it the server is docs-only |
+| `GOMODEL_BASE_URL`      | no       | `http://localhost:8080` | Base URL of the GoModel gateway                 |
+| `GOMODEL_READ_ONLY`     | no       | unset (writes enabled)  | `1`/`true` registers read areas only            |
+| `GOMODEL_HTTP_TOKEN`    | no       | —                       | Set to serve streamable-HTTP MCP on `/mcp`; clients must send it as bearer |
+| `HOST`                  | no       | `127.0.0.1`             | HTTP bind address (HTTP mode); `0.0.0.0` for containers only |
+| `PORT`                  | no       | `3000`                  | HTTP port (HTTP mode)                           |
+| `GOMODEL_CACHE_TTL_SECONDS` | no   | `30`                    | Read-cache TTL                                  |
+| `GOMODEL_DOCS_REPO`     | no       | `ENTERPILOT/GoModel`    | GitHub repo the docs tools read from            |
+| `GOMODEL_DOCS_REF`      | no       | `main`                  | Branch/ref the docs tools read from             |
 
-## Setup
+## Run it
+
+Local (Bun):
 
 ```bash
-git clone https://github.com/weselben/gomodel-admin-mcp.git
-cd gomodel-admin-mcp
-npm install
-npm run build
+bun install
+bun run build
+GOMODEL_ADMIN_API_KEY=sk_gom_... bun run start     # stdio
+GOMODEL_HTTP_TOKEN=$(openssl rand -hex 32) bun run start   # HTTP host mode on :3000
 ```
 
-## mcp.json
+Via bunx straight from a GitHub tag (no clone, no npm account):
 
-Add to your MCP client's `mcp.json`, pointing at the built server:
+```bash
+GOMODEL_ADMIN_API_KEY=sk_gom_... bunx github:weselben/gomodel-admin-mcp@v0.3.0
+```
+
+Docker (image published to GHCR on every release):
+
+```bash
+docker run -d --name gomodel-admin-mcp \
+  -e GOMODEL_HTTP_TOKEN=$(openssl rand -hex 32) \
+  -e GOMODEL_ADMIN_API_KEY=sk_gom_... \
+  -e GOMODEL_BASE_URL=https://your-gateway.example \
+  -p 3000:3000 \
+  ghcr.io/weselben/gomodel-admin-mcp:latest
+```
+
+The image is distroless (no shell, non-root); HTTP mode only starts when
+`GOMODEL_HTTP_TOKEN` is set — without it the process never binds a port.
+
+Security notes for host mode:
+
+- The bind address defaults to `127.0.0.1`. Only containers need
+  `HOST=0.0.0.0` (the image sets it), because a published port cannot
+  reach a process bound to container loopback.
+- The MCP endpoint is plaintext HTTP with bearer auth. Put anything
+  internet-facing behind a TLS-terminating proxy; never publish port
+  3000 directly.
+- Generate the HTTP token (`openssl rand -hex 32`); a guessable token is
+  the only thing standing between the internet and your admin API.
+
+## Wiring it up
+
+stdio clients (`mcp.json`), see [`mcp.json.example`](mcp.json.example) for
+all variants — local build, `bunx`, docs-only, HTTP URL:
 
 ```json
 {
   "mcpServers": {
     "gomodel-admin": {
-      "command": "node",
-      "args": ["/absolute/path/to/gomodel-admin-mcp/dist/index.js"],
+      "command": "bunx",
+      "args": ["github:weselben/gomodel-admin-mcp@v0.3.0"],
       "env": {
         "GOMODEL_BASE_URL": "http://localhost:8080",
         "GOMODEL_ADMIN_API_KEY": "sk_gom_..."
@@ -124,50 +168,80 @@ Add to your MCP client's `mcp.json`, pointing at the built server:
 }
 ```
 
-Or without building, via `npx` + `tsx`:
+GoModel's own MCP feature (Admin UI → MCP servers) can consume this server
+both ways:
 
-```json
-{
-  "mcpServers": {
-    "gomodel-admin": {
-      "command": "npx",
-      "args": ["-y", "tsx", "/absolute/path/to/gomodel-admin-mcp/src/index.ts"],
-      "env": {
-        "GOMODEL_BASE_URL": "http://localhost:8080",
-        "GOMODEL_ADMIN_API_KEY": "sk_gom_..."
-      }
-    }
-  }
-}
-```
+- command transport: command `bunx`, args
+  `["github:weselben/gomodel-admin-mcp@v0.3.0"]`, env as above
+- URL transport: url `http://your-host:3000/mcp`, transport `streamable`,
+  headers `Authorization: Bearer <GOMODEL_HTTP_TOKEN>`
 
-Keep the API key out of version control — `mcp.json` lives in your local
-client config, not in this repository.
+Keep every key/token out of version control — `mcp.json` lives in local
+client config.
 
 ## Development
 
 ```bash
-npm run dev    # run from source with tsx
-npm run build  # compile to dist/
+bun install
+bun run dev     # watch mode from source
+bun run build   # tsc → dist/
+bun test        # bun:test against the swagger-derived mock server
 ```
 
-## Smoke test
+The mock server (`tests/mock-server.mjs`) generates routes from
+`spec/admin-swagger.json` plus hand-added endpoints mirroring upstream
+GoModel admin handlers — param validation, scope checks, fault injection
+via `MOCK_FAULT`/`MOCK_HUGE` env vars. Run `bun test` to verify every
+tool against it before opening a PR. When upstream admin routes change,
+regenerate `spec/admin-swagger.json` and keep coverage green.
+
+Optional live docs gate: `DOCS_E2E=1 bun test`.
+
+### E2e test suite
+
+The e2e suite exercises the server through its transports:
+
+- **stdio tests** — `tests/modes.test.ts` verifies mode gating (full /
+  read-only / docs-only), tool counts, and `get_server_info` payloads.
+- **dispatch tests** — `tests/dispatch.test.ts` exercises the group-tool
+  dispatch layer: operation listing, unknown-op errors, field-level Zod
+  validation, cache_bypass stripping, SSE live logs, path-param routes.
+- **error tests** — `tests/errors.test.ts` covers fault injection
+  (`MOCK_FAULT`), auth failures (wrong key → 401, scoped key → 403),
+  connection refused, huge-response truncation (`MOCK_HUGE`), and 404
+  resource-not-found via path params.
+- **cache tests** — `tests/cache.test.ts` verifies in-memory TTL caching
+  (hit on repeat, bypass when requested, write invalidation).
+- **coverage sweep** — `tests/coverage.test.ts` walks every path+method
+  in `spec/admin-swagger.json`, maps it to exactly one group operation,
+  calls it through the MCP server against the mock, and checks the
+  reverse: every group operation has a route in spec or the known
+  hand-added extras. This is the sync guard when upstream routes change.
+- **http-host tests** — `tests/http-host.test.ts` spawns the MCP server
+  in HTTP host mode (`GOMODEL_HTTP_TOKEN` set) and tests the streamable
+  HTTP transport: 401 on wrong bearer, 404 off-path, authorized
+  `initialize` → `tools/call` on separate requests, and the no-token
+  case (no port opened, child still running in stdio mode).
+- **live docs gate** — `tests/docs.test.ts` is skipped unless
+  `DOCS_E2E=1`; it exercises `docs_index`/`docs_search` against the live
+  GitHub repo (`GOMODEL_DOCS_REPO`).
+
+Harness helpers live in `tests/helpers.mjs` (mock server starter, stdio
+JSON-RPC client, HTTP RPC client) and `tests/mock-server.mjs` (route
+table, error envelope, fault injection). All tests use `bun:test` with
+no external dependencies. Run a single file:
 
 ```bash
-export GOMODEL_ADMIN_API_KEY=sk_gom_...
-export GOMODEL_BASE_URL=http://localhost:8080
-node scripts/smoke.mjs          # read-only checks
-SMOKE_WRITE=1 node scripts/smoke.mjs   # + safe virtual-model round-trip
+bun test tests/http-host.test.ts
 ```
 
-## Notes
+## CI / Releases
 
-- Responses larger than 256 KiB are truncated with a marker.
-- `get_live_logs` collects server-sent events for a bounded window
-  (`seconds` argument, default 5, max 30).
-- Several DELETE endpoints (`delete_virtual_model`, `delete_failover_rule`,
-  `delete_model_pricing_override`, `delete_rate_limit`, `delete_budget`,
-  `delete_user`, `delete_guardrail`, budget/rate-limit resets) pass their
-  identifier in the JSON request body, mirroring the GoModel admin API.
-- `delete_mcp_server` / `delete_provider_credential` take the name as a
-  path parameter instead.
+`.github/workflows/release.yml` (mirrors the RooForge flow): pushes to
+`main` touching code run the bun build check, compute the next patch tag,
+and — when the tag is new — commit `chore(release): vX.Y.Z [skip ci]`
+straight to `main` **before** tagging, so `main` always houses the version
+of the latest release (see `AGENTS.md`). Then the workflow creates the
+tag, the GitHub Release, and the `ghcr.io/weselben/gomodel-admin-mcp`
+image (tags `vX.Y.Z`, `latest`, `sha`). No npm publishing — install from
+GitHub tags or GHCR.
