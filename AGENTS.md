@@ -1,5 +1,87 @@
 # AGENTS.md
 
+MCP server for the GoModel admin REST API. It exposes the dashboard
+surface as grouped MCP tools with gradual discovery, fetches GoModel docs
+live from GitHub, caches reads to spare the Admin API, and can run over
+stdio or as an internet-facing HTTP host in a distroless container.
+
+## Core Principles
+
+### Keep It Simple
+
+Keep files small. Prefer explicit, maintainable code over clever
+abstractions. Do not add abstractions until a repeated pattern clearly
+justifies them.
+
+### Use Good Defaults
+
+Defaults should fit most users. Choose safe practical defaults. Avoid
+requiring configuration for common cases. Document when and why users
+override them.
+
+### Follow the Contract
+
+The Admin API contract lives in the GoModel repo
+(`internal/admin/routes.go` + `handler_*.go`), not here. When adding or
+changing a tool, read the upstream handler first and mirror its exact
+request/response fields, path params, and query params. Keep
+`spec/admin-swagger.json` in sync when upstream changes.
+
+## Implementation Guidance
+
+When editing code:
+
+- Make the smallest change that solves the problem.
+- Match the existing declarative table style in `src/tools.ts`,
+  `src/write-tools.ts`, `src/extra-write-tools.ts`, and `src/groups.ts`.
+- Keep the gradual-discovery contract: omitting `operation` lists an
+  area's operations; unknown operations error with the valid list;
+  invalid params return field-level zod errors. Never require clients to
+  know operations that the dispatch cannot discover.
+- Keep group tool schemas generic (`operation`, `params`). Do not move
+  per-operation param docs into tool schemas; that is the passive
+  context cost we pay to avoid.
+- The HTTP host mode is stateless: one fresh `McpServer` + transport per
+  request. Do not share a server across requests.
+- Reads go through the TTL cache (`params.cache_bypass` escapes it);
+  writes invalidate the cache.
+- Never bind a port unless `GOMODEL_HTTP_TOKEN` is set; without it the
+  server is stdio-only.
+- Do not expose real admin keys, HTTP tokens, or gateway URLs. Placeholders
+  only (`sk_gom_REPLACE_ME`, `localhost`).
+
+## Testing
+
+There is no unit test suite. Verify with:
+
+- `bun run build` (typecheck + compile) — must pass.
+- `scripts/smoke.mjs` against a live gateway (read-only by default;
+  `SMOKE_WRITE=1` adds a safe virtual-model round-trip).
+- Manual stdio checks: op listing, unknown-op error, invalid-params error.
+- Manual HTTP checks when touching host mode: 401 without bearer,
+  authorized `initialize` + `tools/call`.
+
+State plainly in a PR what was not covered against a live gateway.
+
+## Documentation
+
+`README.md` is the user-facing doc. Keep it in sync: tool areas, env
+vars, the measured token table, and install paths. Comments in code stay
+sparse and say *why*, not *what*.
+
+## Commit and PR Format
+
+Conventional Commits for subjects and PR titles:
+
+```text
+type(scope): short summary
+```
+
+Allowed types: `feat`, `fix`, `perf`, `docs`, `refactor`, `test`, `build`,
+`ci`, `chore`, `revert`. Keep the change focused; explain user-visible
+impact. Squash merges preserve the PR title as the commit subject. Do not
+add AI-assistant mentions to commits.
+
 ## Version management (CI-owned — do not touch)
 
 The `version` field in `package.json` is managed automatically by the
@@ -25,8 +107,3 @@ release workflow (`.github/workflows/release.yml`):
   `tsc`; `bun run start` runs `dist/index.js`.
 - No npm publishing: consumers install from GitHub tags
   (`bunx github:weselben/gomodel-admin-mcp@vX.Y.Z`) or the GHCR image.
-
-## Secrets and safety
-
-- Never commit real admin keys, HTTP tokens, or gateway URLs. Placeholders
-  only (`sk_gom_REPLACE_ME`, `localhost`).
