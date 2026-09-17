@@ -19,7 +19,7 @@
     // ── Variant 2: run via bunx from a GitHub tag (no install, no npm) ─
     "gomodel-admin-bunx": {
       "command": "bunx",
-      "args": ["github:weselben/gomodel-admin-mcp#v0.0.2"],
+      "args": ["github:weselben/gomodel-admin-mcp#v0.0.4"],
       "env": {
         "GOMODEL_BASE_URL": "http://localhost:8080",
         "GOMODEL_ADMIN_API_KEY": "sk_gom_REPLACE_ME"

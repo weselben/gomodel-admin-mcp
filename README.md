@@ -125,7 +125,7 @@ GOMODEL_HTTP_TOKEN=$(openssl rand -hex 32) bun run start   # HTTP host mode on :
 Via bunx straight from a GitHub tag (no clone, no npm account):
 
 ```bash
-GOMODEL_ADMIN_API_KEY=sk_gom_... bunx github:weselben/gomodel-admin-mcp#v0.0.2
+GOMODEL_ADMIN_API_KEY=sk_gom_... bunx github:weselben/gomodel-admin-mcp#v0.0.4
 ```
 
 Docker (image published to GHCR on every release):
@@ -163,7 +163,7 @@ all variants — local build, `bunx`, docs-only, HTTP URL:
   "mcpServers": {
     "gomodel-admin": {
       "command": "bunx",
-      "args": ["github:weselben/gomodel-admin-mcp#v0.0.2"],
+      "args": ["github:weselben/gomodel-admin-mcp#v0.0.4"],
       "env": {
         "GOMODEL_BASE_URL": "http://localhost:8080",
         "GOMODEL_ADMIN_API_KEY": "sk_gom_..."
@@ -177,7 +177,7 @@ GoModel's own MCP feature (Admin UI → MCP servers) can consume this server
 both ways:
 
 - command transport: command `bunx`, args
-  `["github:weselben/gomodel-admin-mcp#v0.0.2"]`, env as above
+  `["github:weselben/gomodel-admin-mcp#v0.0.4"]`, env as above
 - URL transport: url `http://your-host:3000/mcp`, transport `streamable`,
   headers `Authorization: Bearer <GOMODEL_HTTP_TOKEN>`
 
@@ -242,11 +242,22 @@ bun test tests/http-host.test.ts
 
 ## CI / Releases
 
-`.github/workflows/release.yml` (mirrors the RooForge flow): pushes to
-`main` touching code run the bun build check, compute the next patch tag,
-and — when the tag is new — commit `chore(release): vX.Y.Z [skip ci]`
-straight to `main` **before** tagging, so `main` always houses the version
-of the latest release (see `AGENTS.md`). Then the workflow creates the
-tag, the GitHub Release, and the `ghcr.io/weselben/gomodel-admin-mcp`
-image (tags `vX.Y.Z`, `latest`, `sha`). No npm publishing — install from
-GitHub tags or GHCR.
+`.github/workflows/release.yml` runs on every push to `main` touching a
+watched path (source, manifests, docs, tests, CI itself). The full flow —
+constraints, failure modes, and operations — is documented in
+[`.github/agents.md`](.github/agents.md); the short version:
+
+1. Build, lint, `bun test`, and a README token-table refresh run first.
+2. The next patch tag is computed and the version bump travels through an
+   **auto-merged `chore(release): vX.Y.Z` pull request** — direct pushes
+   to `main` are blocked by the branch ruleset, so nothing bypasses it.
+3. When that PR merges, the workflow tags the merge commit, publishes the
+   GitHub Release, and pushes the `ghcr.io/weselben/gomodel-admin-mcp`
+   image (tags `vX.Y.Z`, `latest`, sha).
+
+No npm publishing — install from GitHub tags (`#vX.Y.Z`) or GHCR. The
+whole flow needs no PAT or bypass: `GITHUB_TOKEN` creates the release
+branch and PR (auto-merge waits for the Copilot review; merging the
+release PR manually also works), and tags plus `release/*` branches are
+not ruleset-guarded. All steps tolerate no-ops and force-replace tags, so
+a re-run always completes a partial release.
