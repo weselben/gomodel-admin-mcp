@@ -104,8 +104,7 @@ release workflow (`.github/workflows/release.yml`):
   `version` to match), and only then creates the tag, the GitHub Release,
   and the GHCR image. `main` therefore always houses the version of the
   latest release.
-- The version commit pushes with the `RELEASE_PAT` secret (a classic PAT
-  of the repo owner): the `main` ruleset blocks `GITHUB_TOKEN` pushes and
+- The version commit pushes with the `RELEASE_PAT` secret (an owner PAT): the `main` ruleset blocks `GITHUB_TOKEN` pushes and
   personal repos cannot add GitHub Actions as a ruleset bypass actor. If
   the PAT is rotated or revoked, update the secret or releases fail at
   the push step.
