@@ -64,7 +64,7 @@ jobs:
 
       - name: regenerate admin swagger spec
         run: |
-          bun scripts/regenerate-admin-swagger.mjs \
+          node scripts/regenerate-admin-swagger.mjs \
             _swagout/swagger.json _new-admin-swagger.json
 
       - name: checkout this repo
@@ -82,9 +82,10 @@ jobs:
             exit 0
           fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
-          bun -e '
-            const a = JSON.parse(await Bun.file("this/spec/admin-swagger.json").text());
-            const b = JSON.parse(await Bun.file("_new-admin-swagger.json").text());
+          node -e '
+            const fs = require("node:fs");
+            const a = JSON.parse(fs.readFileSync("this/spec/admin-swagger.json", "utf8"));
+            const b = JSON.parse(fs.readFileSync("_new-admin-swagger.json", "utf8"));
             const ak = new Set(Object.keys(a.paths)), bk = new Set(Object.keys(b.paths));
             const ad = new Set(Object.keys(a.definitions)), bd = new Set(Object.keys(b.definitions));
             console.log("paths_old=" + ak.size);
