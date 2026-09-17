@@ -53,10 +53,11 @@ jobs:
         # keep the 2.0 output — their target converts 2.0 -> 3.0 for the
         # website; we feed 2.0 straight into our regenerator.
         run: |
+          cd gomodel
           go run github.com/swaggo/swag/v2/cmd/swag init \
             --generalInfo main.go \
             --dir cmd/gomodel,internal \
-            --output ./_swagout \
+            --output "$GITHUB_WORKSPACE/_swagout" \
             --outputTypes json \
             --parseDependency \
             --quiet
