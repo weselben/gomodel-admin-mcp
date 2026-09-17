@@ -67,13 +67,17 @@ jobs:
         if: ${{ steps.semantic.outputs.new_tag != steps.semantic.outputs.previous_tag }}
         env:
           NEW_TAG: ${{ steps.semantic.outputs.new_tag }}
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
         run: |
           VERSION="${NEW_TAG#v}"
           npm version "$VERSION" --no-git-tag-version
           git config user.name "release-ci"
           git config user.email "actions@github.com"
           git commit -am "chore(release): $NEW_TAG [skip ci]"
-          git push origin HEAD:main
+          # GITHUB_TOKEN pushes are blocked by the main ruleset, and personal
+          # repos cannot add GitHub Actions as a bypass actor. Push as the
+          # owner instead (Admin role is on the bypass list).
+          git push "https://x-access-token:${RELEASE_PAT}@github.com/weselben/gomodel-admin-mcp.git" HEAD:main
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: tag release commit
