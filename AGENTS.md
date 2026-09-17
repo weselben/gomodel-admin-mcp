@@ -1,4 +1,3 @@
-# AGENTS.md
 
 MCP server for the GoModel admin REST API. It exposes the dashboard
 surface as grouped MCP tools with gradual discovery, fetches GoModel docs
