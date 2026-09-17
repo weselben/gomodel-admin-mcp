@@ -8,7 +8,7 @@
     "node": ">=18"
   },
   "bin": {
-    "gomodel-admin-mcp": "dist/index.js"
+    "gomodel-admin-mcp": "src/index.ts"
   },
   "files": [
     "dist",

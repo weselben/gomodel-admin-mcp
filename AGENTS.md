@@ -117,4 +117,4 @@ release workflow (`.github/workflows/release.yml`):
   `package-lock.json` must not return). `bun run build` compiles with
   `tsc`; `bun run start` runs `dist/index.js`.
 - No npm publishing: consumers install from GitHub tags
-  (`bunx github:weselben/gomodel-admin-mcp@vX.Y.Z`) or the GHCR image.
+  (`bunx github:weselben/gomodel-admin-mcp#vX.Y.Z`) or the GHCR image.
