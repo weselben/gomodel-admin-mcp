@@ -91,6 +91,7 @@ jobs:
         if: ${{ steps.mode.outputs.mode == 'pr' }}
         env:
           NEW_TAG: ${{ steps.semantic.outputs.new_tag }}
+          PREV_TAG: ${{ steps.semantic.outputs.previous_tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
@@ -108,12 +109,30 @@ jobs:
             exit 0
           fi
           git push -f origin "HEAD:$BRANCH"
+          # Release-notes preview: commits since the previous tag, at the
+          # state this PR was (last) refreshed. Every watched-path merge
+          # re-fires this step, so an open release PR's body stays current
+          # with main — nothing goes stale while it waits.
+          {
+            echo "## Release notes preview — $NEW_TAG"
+            echo ""
+            echo "_Snapshot of main at the last refresh; the published notes are regenerated at release time._"
+            echo ""
+            if [ -n "$PREV_TAG" ] && git rev-parse -q --verify "refs/tags/$PREV_TAG" > /dev/null; then
+              git log --pretty=format:"- %s" "refs/tags/$PREV_TAG..origin/main"
+            else
+              git log --pretty=format:"- %s" origin/main
+            fi
+            echo ""
+            echo ""
+            echo "**Merging this PR is the release trigger** — the merge fires the finalize run (tag, GitHub Release, GHCR image). Close it to skip the release; the next watched merge re-opens it with a refreshed preview."
+          } > /tmp/pr-body.md
           gh pr create --base main --head "$BRANCH" \
             --title "chore(release): $NEW_TAG" \
-            --body "Automated version bump for $NEW_TAG. Merging this PR tags and publishes the release." \
+            --body-file /tmp/pr-body.md \
             || gh pr edit "$BRANCH" \
               --title "chore(release): $NEW_TAG" \
-              --body "Automated version bump for $NEW_TAG. Merging this PR tags and publishes the release."
+              --body-file /tmp/pr-body.md
           # Releases are human-gated: nothing auto-merges. The owner
           # merges the release PR; that merge is a real push event by a
           # bypass-listed user, so the event-driven finalize run fires.
