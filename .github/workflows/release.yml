@@ -86,7 +86,7 @@ jobs:
             echo "mode=pr" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: open release PR and finalize after merge
+      - name: open release PR
         id: release_pr
         if: ${{ steps.mode.outputs.mode == 'pr' }}
         env:
@@ -114,31 +114,9 @@ jobs:
             || gh pr edit "$BRANCH" \
               --title "chore(release): $NEW_TAG" \
               --body "Automated version bump for $NEW_TAG. Merging this PR tags and publishes the release."
-          # --auto errors when the PR is already mergeable ("Pull request
-          # is in clean status" — nothing to wait for). That state means
-          # every ruleset requirement is already satisfied, so a direct
-          # merge is the correct fallback. Otherwise auto-merge is
-          # enabled and the poll below waits for it.
-          gh pr merge "$BRANCH" --squash --auto \
-            || gh pr merge "$BRANCH" --squash
-          # A merge performed by GITHUB_TOKEN fires no push event, so the
-          # finalize cannot rely on another run — wait here for the merge
-          # (Copilot review gates it; a manual merge also completes it),
-          # then finalize in this run. A manual merge while this loop is
-          # sleeping triggers an extra finalize run: idempotent, harmless.
-          STATE="OPEN"
-          for _ in $(seq 1 60); do
-            STATE="$(gh pr view "$BRANCH" --json state -q .state)"
-            [ "$STATE" = "MERGED" ] && break
-            sleep 15
-          done
-          if [ "$STATE" != "MERGED" ]; then
-            echo "::error::release PR did not merge within 15 minutes — merge it manually; the resulting push event will run finalize."
-            exit 1
-          fi
-          git fetch origin main
-          git checkout -B main origin/main
-          echo "mode=finalize" >> "$GITHUB_OUTPUT"
+          # Releases are human-gated: nothing auto-merges. The owner
+          # merges the release PR; that merge is a real push event by a
+          # bypass-listed user, so the event-driven finalize run fires.
 
       - name: tag release commit
         if: ${{ steps.mode.outputs.mode == 'finalize' || steps.release_pr.outputs.mode == 'finalize' }}
