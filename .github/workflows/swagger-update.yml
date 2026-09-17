@@ -26,6 +26,11 @@ jobs:
   regenerate:
     runs-on: ubuntu-latest
     steps:
+      - name: checkout this repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: checkout gomodel
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -67,16 +72,10 @@ jobs:
           node scripts/regenerate-admin-swagger.mjs \
             _swagout/swagger.json _new-admin-swagger.json
 
-      - name: checkout this repo
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          path: this
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: diff against current spec
         id: diff
         run: |
-          if cmp -s _new-admin-swagger.json this/spec/admin-swagger.json; then
+          if cmp -s _new-admin-swagger.json spec/admin-swagger.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "spec is already up to date for gomodel ${{ steps.gomsha.outputs.short }}"
             exit 0
@@ -84,7 +83,7 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
           node -e '
             const fs = require("node:fs");
-            const a = JSON.parse(fs.readFileSync("this/spec/admin-swagger.json", "utf8"));
+            const a = JSON.parse(fs.readFileSync("spec/admin-swagger.json", "utf8"));
             const b = JSON.parse(fs.readFileSync("_new-admin-swagger.json", "utf8"));
             const ak = new Set(Object.keys(a.paths)), bk = new Set(Object.keys(b.paths));
             const ad = new Set(Object.keys(a.definitions)), bd = new Set(Object.keys(b.definitions));
@@ -115,7 +114,6 @@ jobs:
           ADDED_PATHS: ${{ steps.diff.outputs.added_paths }}
           REMOVED_PATHS: ${{ steps.diff.outputs.removed_paths }}
         run: |
-          cd this
           BRANCH="chore/swagger-update-${GOMODEL_SHORT}"
           {
             echo "Automated regeneration of spec/admin-swagger.json from upstream [ENTERPILOT/GoModel](https://github.com/ENTERPILOT/GoModel) commit ${GOMODEL_SHA}."
@@ -136,7 +134,7 @@ jobs:
           git config user.name "release-ci"
           git config user.email "actions@github.com"
           git checkout -B "$BRANCH" origin/main
-          cp ../_new-admin-swagger.json spec/admin-swagger.json
+          cp _new-admin-swagger.json spec/admin-swagger.json
           printf 'gomodel_commit: %s\ngenerated_at: %s\n' \
             "$GOMODEL_SHA" \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > spec/gomodel-source.txt
