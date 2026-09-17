@@ -105,6 +105,11 @@ function buildUrl(tool: AdminTool, args: Record<string, unknown>): string {
   return url.toString();
 }
 
+/**
+ * Fetch an admin read, skipping cache lookup when `bypass` is true. Successful
+ * JSON is homogenized and truncated before the result is cached; non-success
+ * responses throw with a bounded response excerpt.
+ */
 async function adminGet(tool: AdminTool, args: Record<string, unknown>, bypass: boolean): Promise<string> {
   const url = buildUrl(tool, args);
   if (!bypass) {
@@ -169,6 +174,12 @@ function buildUrlFromPath(path: string, args: Record<string, unknown>): string {
   return `${BASE_URL}/admin${pathname}`;
 }
 
+/**
+ * Submit an admin write and invalidate all cached reads after success.
+ * Empty or 204 responses return a status summary; other JSON responses are
+ * homogenized and truncated. Non-success responses throw with a bounded
+ * response excerpt.
+ */
 async function adminWrite(tool: WriteTool, args: Record<string, unknown>): Promise<string> {
   const url = buildUrlFromPath(tool.path, args);
   const body = JSON.stringify(tool.body(args));

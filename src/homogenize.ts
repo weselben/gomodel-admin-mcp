@@ -38,6 +38,7 @@ function isPlainObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Recursively align multi-item object arrays to a sorted key union, padding missing values with null. */
 function homogenizeValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     const items = value.map(homogenizeValue);
@@ -53,8 +54,11 @@ function homogenizeValue(value: unknown): unknown {
   return value;
 }
 
-/** Parse, homogenize, and re-stringify compactly; passthrough on non-JSON
- *  and on any input holding an integer beyond the exact range. */
+/**
+ * Parse and compactly reserialize JSON after recursively aligning multi-item
+ * object arrays. Invalid JSON and input containing an integer that cannot be
+ * represented exactly as a JavaScript number pass through unchanged.
+ */
 export function homogenizeJson(text: string): string {
   if (hasUnsafeInteger(text)) return text;
   let parsed: unknown;
@@ -66,9 +70,11 @@ export function homogenizeJson(text: string): string {
   return JSON.stringify(homogenizeValue(parsed));
 }
 
-/** Homogenize, but keep the original text when it fits maxBytes and the
- *  padded form does not — truncation after this must not break valid JSON
- *  that fit before padding. Oversized input stays the caller's problem. */
+/**
+ * Homogenize unless the original string fits `maxBytes` and the homogenized
+ * string does not. Length is measured as JavaScript string length to match the
+ * caller's truncation check; input already over the limit remains homogenized.
+ */
 export function homogenizeJsonWithinLimit(text: string, maxBytes: number): string {
   const homogenized = homogenizeJson(text);
   if (homogenized.length > maxBytes && text.length <= maxBytes) return text;
