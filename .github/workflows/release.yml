@@ -12,6 +12,9 @@ on:
       - README.md
       - tests/**
       - .github/**
+  # Manual finalize/redo path: dispatches on main, finalizing whatever
+  # tag the state implies.
+  workflow_dispatch:
 
 # Release runs mutate tags and images; serialize them so overlapping
 # merges cannot race on the same tag.
@@ -82,7 +85,8 @@ jobs:
             echo "mode=pr" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: open release PR
+      - name: open release PR and finalize after merge
+        id: release_pr
         if: ${{ steps.mode.outputs.mode == 'pr' }}
         env:
           NEW_TAG: ${{ steps.semantic.outputs.new_tag }}
@@ -97,6 +101,11 @@ jobs:
           git config user.email "actions@github.com"
           git commit -am "chore(release): $NEW_TAG" \
             || echo "version already set — nothing to commit"
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then
+            echo "version already on main — finalizing directly"
+            echo "mode=finalize" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git push -f origin "HEAD:$BRANCH"
           gh pr create --base main --head "$BRANCH" \
             --title "chore(release): $NEW_TAG" \
@@ -105,9 +114,27 @@ jobs:
               --title "chore(release): $NEW_TAG" \
               --body "Automated version bump for $NEW_TAG. Merging this PR tags and publishes the release."
           gh pr merge "$BRANCH" --squash --auto
+          # A merge performed by GITHUB_TOKEN fires no push event, so the
+          # finalize cannot rely on another run — wait here for the merge
+          # (Copilot review gates it; a manual merge also completes it),
+          # then finalize in this run. A manual merge while this loop is
+          # sleeping triggers an extra finalize run: idempotent, harmless.
+          STATE="OPEN"
+          for _ in $(seq 1 60); do
+            STATE="$(gh pr view "$BRANCH" --json state -q .state)"
+            [ "$STATE" = "MERGED" ] && break
+            sleep 15
+          done
+          if [ "$STATE" != "MERGED" ]; then
+            echo "::error::release PR did not merge within 15 minutes — merge it manually; the resulting push event will run finalize."
+            exit 1
+          fi
+          git fetch origin main
+          git checkout -B main origin/main
+          echo "mode=finalize" >> "$GITHUB_OUTPUT"
 
       - name: tag release commit
-        if: ${{ steps.mode.outputs.mode == 'finalize' }}
+        if: ${{ steps.mode.outputs.mode == 'finalize' || steps.release_pr.outputs.mode == 'finalize' }}
         env:
           NEW_TAG: ${{ steps.semantic.outputs.new_tag }}
         run: |
@@ -117,7 +144,7 @@ jobs:
           git push -f origin "$NEW_TAG"
 
       - name: create release
-        if: ${{ steps.mode.outputs.mode == 'finalize' }}
+        if: ${{ steps.mode.outputs.mode == 'finalize' || steps.release_pr.outputs.mode == 'finalize' }}
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ steps.semantic.outputs.new_tag }}
@@ -125,11 +152,11 @@ jobs:
           name: Release ${{ steps.semantic.outputs.new_tag }}
 
       - name: set up docker buildx
-        if: ${{ steps.mode.outputs.mode == 'finalize' }}
+        if: ${{ steps.mode.outputs.mode == 'finalize' || steps.release_pr.outputs.mode == 'finalize' }}
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: login to ghcr
-        if: ${{ steps.mode.outputs.mode == 'finalize' }}
+        if: ${{ steps.mode.outputs.mode == 'finalize' || steps.release_pr.outputs.mode == 'finalize' }}
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
@@ -137,7 +164,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: build and push docker
-        if: ${{ steps.mode.outputs.mode == 'finalize' }}
+        if: ${{ steps.mode.outputs.mode == 'finalize' || steps.release_pr.outputs.mode == 'finalize' }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
