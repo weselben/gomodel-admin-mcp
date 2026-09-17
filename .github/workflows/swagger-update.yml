@@ -42,18 +42,18 @@ jobs:
           echo "short=${SHA:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: setup Go
-        uses: actions/setup-go@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.23'
+          go-version-file: gomodel/go.mod
           cache: false
 
       - name: generate swagger.json (swag init)
-        # Same flags gomodel's own Makefile uses for its docs-openapi
-        # target, but we keep the 2.0 output (their target converts
-        # 2.0 -> 3.0 for the website; we feed 2.0 straight into our
-        # regenerator). swag version pinned for reproducible output.
+        # Same invocation gomodel's own Makefile uses (the module pins
+        # swag v2.0.0-rc5 in go.mod, so no version is needed here). We
+        # keep the 2.0 output — their target converts 2.0 -> 3.0 for the
+        # website; we feed 2.0 straight into our regenerator.
         run: |
-          go run github.com/swaggo/swag/v2/cmd/swag@v1.16.4 init \
+          go run github.com/swaggo/swag/v2/cmd/swag init \
             --generalInfo main.go \
             --dir cmd/gomodel,internal \
             --output ./_swagout \
@@ -92,52 +92,63 @@ jobs:
             console.log("paths_removed=" + [...ak].filter(p => !bk.has(p)).length);
             console.log("defs_old=" + ad.size);
             console.log("defs_new=" + bd.size);
-            console.log("defs_added=" + [...bd].filter(d => !ad.has(d)).length);
-            console.log("defs_removed=" + [...ad].filter(d => !bd.has(d)).length);
             console.log("added_paths=" + [...bk].filter(p => !ak.has(p)).join(", "));
             console.log("removed_paths=" + [...ak].filter(p => !bk.has(p)).join(", "));
           ' | tee -a "$GITHUB_OUTPUT"
 
+      # The PR body is assembled into a file (one indented echo per line)
+      # instead of a heredoc: heredoc content must start at column 0,
+      # which would break out of this YAML block scalar and corrupt the
+      # workflow file. That exact bug fired this workflow on every push.
       - name: open PR
         if: steps.diff.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOMODEL_SHA: ${{ steps.gomsha.outputs.sha }}
+          GOMODEL_SHORT: ${{ steps.gomsha.outputs.short }}
+          PATHS_OLD: ${{ steps.diff.outputs.paths_old }}
+          PATHS_NEW: ${{ steps.diff.outputs.paths_new }}
+          ADDED_COUNT: ${{ steps.diff.outputs.paths_added }}
+          REMOVED_COUNT: ${{ steps.diff.outputs.paths_removed }}
+          ADDED_PATHS: ${{ steps.diff.outputs.added_paths }}
+          REMOVED_PATHS: ${{ steps.diff.outputs.removed_paths }}
         run: |
           cd this
-          BRANCH="chore/swagger-update-${{ steps.gomsha.outputs.short }}"
+          BRANCH="chore/swagger-update-${GOMODEL_SHORT}"
+          {
+            echo "Automated regeneration of spec/admin-swagger.json from upstream [ENTERPILOT/GoModel](https://github.com/ENTERPILOT/GoModel) commit ${GOMODEL_SHA}."
+            echo ""
+            echo "|  | paths |"
+            echo "|---|---|"
+            echo "| before | ${PATHS_OLD} |"
+            echo "| after | ${PATHS_NEW} |"
+            echo ""
+            echo "Added paths: ${ADDED_COUNT} — ${ADDED_PATHS}"
+            echo ""
+            echo "Removed paths: ${REMOVED_COUNT} — ${REMOVED_PATHS}"
+            echo ""
+            echo "spec/gomodel-source.txt records the gomodel commit and generation time. This workflow is human-gated — nothing auto-merges."
+            echo ""
+            echo "Merging this PR does not fire a release flow (spec/** is not a watched path). Add spec/** to the release workflow's paths filter if spec bumps should ship a release."
+          } > /tmp/pr-body.md
           git config user.name "release-ci"
           git config user.email "actions@github.com"
           git checkout -B "$BRANCH" origin/main
           cp ../_new-admin-swagger.json spec/admin-swagger.json
           printf 'gomodel_commit: %s\ngenerated_at: %s\n' \
-            "${{ steps.gomsha.outputs.sha }}" \
+            "$GOMODEL_SHA" \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > spec/gomodel-source.txt
           git add spec/admin-swagger.json spec/gomodel-source.txt
           if git diff --cached --quiet; then
             echo "no spec changes after staging"
             exit 0
           fi
-          git commit -m "chore: update admin swagger spec from gomodel ${{ steps.gomsha.outputs.short }}"
+          git commit -m "chore: update admin swagger spec from gomodel $GOMODEL_SHORT"
           git push -f origin "$BRANCH"
           # Release policy: nothing auto-merges. Human review/merge is the gate.
           gh pr create --base main --head "$BRANCH" \
-            --title "chore: update admin swagger spec from gomodel ${{ steps.gomsha.outputs.short }}" \
-            --body "$(cat <<EOF
-Automated regeneration of \`spec/admin-swagger.json\` from upstream [ENTERPILOT/GoModel](https://github.com/ENTERPILOT/GoModel) \`${{ steps.gomsha.outputs.sha }}\`.
-
-|  | paths | definitions |
-|---|---|---|
-| before | ${{ steps.diff.outputs.paths_old }} | ${{ steps.diff.outputs.defs_old }} |
-| after | ${{ steps.diff.outputs.paths_new }} | ${{ steps.diff.outputs.defs_new }} |
-
-**Added paths**: ${{ steps.diff.outputs.paths_added }} — \`${{ steps.diff.outputs.added_paths }}\`
-**Removed paths**: ${{ steps.diff.outputs.paths_removed }} — \`${{ steps.diff.outputs.removed_paths }}\`
-
-\`spec/gomodel-source.txt\` records the gomodel commit and generation time. The workflow is human-gated — no auto-merge.
-
-Merging this PR does **not** fire a release flow (\`spec/**\` is not a watched path). If you want a release to ship alongside the spec bump, add \`spec/**\` to the release workflow's \`paths:\` filter in a separate change.
-EOF
-)"
+            --title "chore: update admin swagger spec from gomodel $GOMODEL_SHORT" \
+            --body-file /tmp/pr-body.md
 
       - name: up-to-date summary
         if: steps.diff.outputs.changed != 'true'

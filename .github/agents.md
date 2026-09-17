@@ -91,3 +91,18 @@ Docker build context.
 - The version field is CI-owned. Never bump it in feature PRs.
 - Skip a release: close the open `chore(release)` PR; the next watched
   merge re-opens it with the recomputed tag.
+
+## Workflow-file gotchas
+
+- **Heredocs break block scalars.** A `run: |` block ends at the first
+  line with less indentation — heredoc content written at column 0
+  escapes the block, and the rest of the file gets parsed as YAML
+  (`**Label**:` in markdown reads as an implicit key → parse error).
+  An invalid workflow falls back to firing on **every** event and fails
+  each time — that is the email-spam failure mode. Build multi-line
+  strings (PR bodies etc.) into a file with indented `echo` lines
+  instead, and validate with a YAML parser before pushing.
+- **Action SHAs are per-action.** Never reuse a pinned SHA across
+  actions — `actions/setup-go@<setup-bun SHA>` resolves to nothing and
+  fails the job before any step runs (empty jobs list, failure email).
+  Resolve each action's SHA separately from its own repo.
