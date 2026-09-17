@@ -96,24 +96,24 @@ add AI-assistant mentions to commits.
 ## Version management (CI-owned — do not touch)
 
 The `version` field in `package.json` is managed automatically by the
-release workflow (`.github/workflows/release.yml`):
+release workflow (`.github/workflows/release.yml`) via **release PRs**:
 
 - On every push to `main` that touches watched paths, CI runs the build
-  check, computes the next semantic tag, commits
-  `chore(release): vX.Y.Z [skip ci]` **directly to `main`** (setting
-  `version` to match), and only then creates the tag, the GitHub Release,
-  and the GHCR image. `main` therefore always houses the version of the
-  latest release.
-- The version commit pushes with the `RELEASE_PAT` secret (an owner PAT): the `main` ruleset blocks `GITHUB_TOKEN` pushes and
-  personal repos cannot add GitHub Actions as a ruleset bypass actor. If
-  the PAT is rotated or revoked, update the secret or releases fail at
-  the push step.
+  check, computes the next semantic tag, and opens (or updates) an
+  auto-merged `chore(release): vX.Y.Z` PR carrying the version bump and
+  the refreshed README token table.
+- When that PR merges, the workflow run on the merge commit finalizes:
+  it tags the merge commit (force-replacing an existing tag), creates
+  the GitHub Release, and pushes the GHCR image. `main` therefore always
+  houses the version of the latest release.
+- Why a PR: the `main` ruleset requires pull requests, `GITHUB_TOKEN`
+  pushes are rejected, and personal repos cannot add GitHub Actions as a
+  ruleset bypass actor. The PR path needs no bypass and no PAT.
 - **Never edit `version` yourself.** Do not include version bumps in
-  feature PRs — rebases and merges of branches always win for code, and CI
-  rewrites the version field at release time.
-- The release commit carries `[skip ci]`, so it never re-fires the release
-  workflow. Any other commit touching `package.json` (dependencies,
-  scripts) triggers a normal release cycle.
+  feature PRs — rebases and merges of branches always win for code, and
+  CI rewrites the version field at release time.
+- Merging the release PR is what releases. If Copilot review stalls the
+  auto-merge, merging the release PR manually completes the release.
 
 ## Runtime and toolchain
 
