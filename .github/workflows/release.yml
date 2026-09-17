@@ -81,7 +81,13 @@ jobs:
           # owner instead (Admin role is on the bypass list). The username
           # must be the owner: GitHub attributes x-access-token pushes to
           # the Actions app, which is not on the bypass list.
-          git push "https://weselben:${RELEASE_PAT}@github.com/weselben/gomodel-admin-mcp.git" HEAD:main
+          # actions/checkout injects an Authorization extraheader carrying
+          # the workflow GITHUB_TOKEN; it wins over URL credentials, so the
+          # header is cleared for this push or the ruleset sees the app
+          # actor again and rejects it.
+          git config --unset-all http.https://github.com/.extraheader || true
+          git -c http.https://github.com/.extraheader= \
+            push "https://weselben:${RELEASE_PAT}@github.com/weselben/gomodel-admin-mcp.git" HEAD:main
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: tag release commit
