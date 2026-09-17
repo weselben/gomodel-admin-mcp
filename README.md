@@ -79,6 +79,16 @@ Read results are cached in memory for `GOMODEL_CACHE_TTL_SECONDS` (default
 `"params": { "cache_bypass": true }` to skip the cache for one call. Any
 write invalidates the whole cache.
 
+## Compression-friendly output
+
+JSON responses are homogenized before they reach the client: arrays of
+objects are rewritten to a uniform, sorted key set with missing keys padded
+as `null` (values are never changed, but absent and `null` become
+indistinguishable). The output stays plain valid JSON for any client; on
+gateways with GoModel Pro prompt compression this shape is what the
+reversible JSON-table encoding rewrites, cutting repeated key names from
+every row of large list responses.
+
 ## Modes and passive token cost
 
 <!-- CI-generated: bun run measure-tokens rewrites the rows below on release. Do not edit them by hand. -->
