@@ -1,6 +1,6 @@
 {
   "name": "gomodel-admin-mcp",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "MCP server for the GoModel admin API — grouped tools with gradual discovery, live docs from GitHub, HTTP host mode",
   "type": "module",
   "license": "MIT",
