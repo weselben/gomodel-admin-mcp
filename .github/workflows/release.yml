@@ -10,6 +10,7 @@ on:
       - Dockerfile
       - tsconfig.json
       - README.md
+      - CLAUDE.md
       - tests/**
       - .github/**
   # Manual finalize/redo path: dispatches on main, finalizing whatever

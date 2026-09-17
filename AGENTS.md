@@ -5,6 +5,8 @@ surface as grouped MCP tools with gradual discovery, fetches GoModel docs
 live from GitHub, caches reads to spare the Admin API, and can run over
 stdio or as an internet-facing HTTP host in a distroless container.
 
+Release CI: see `.github/agents.md`.
+
 ## Core Principles
 
 ### Keep It Simple
@@ -122,3 +124,4 @@ release workflow (`.github/workflows/release.yml`) via **release PRs**:
   `tsc`; `bun run start` runs `dist/index.js`.
 - No npm publishing: consumers install from GitHub tags
   (`bunx github:weselben/gomodel-admin-mcp#vX.Y.Z`) or the GHCR image.
+
