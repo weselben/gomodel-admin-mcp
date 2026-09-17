@@ -14,8 +14,14 @@ read the constraints first.
      image (`vX.Y.Z` / `latest` / sha).
    - anything else → **open release PR**: bump `package.json`, push a
      `release/vX.Y.Z` branch, open (or update) a `chore(release): vX.Y.Z`
-     PR, enable auto-merge (squash), then poll until merged and switch
-     into finalize mode **within the same run**.
+     PR, merge it, then poll until merged and switch into finalize mode
+     **within the same run**. The merge tries `--auto` first and falls
+     back to a direct merge: `enablePullRequestAutoMerge` **errors when
+     the PR is already mergeable** ("Pull request is in clean status"),
+     which is a race — Copilot review sometimes satisfies the ruleset
+     between `gh pr create` and `gh pr merge`. A clean PR means every
+     requirement is already met, so the direct merge is the correct
+     fallback.
 4. A `release` concurrency group serializes overlapping runs.
 
 Releases are therefore triggered by merging *anything* watched — the

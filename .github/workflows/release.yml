@@ -114,7 +114,13 @@ jobs:
             || gh pr edit "$BRANCH" \
               --title "chore(release): $NEW_TAG" \
               --body "Automated version bump for $NEW_TAG. Merging this PR tags and publishes the release."
-          gh pr merge "$BRANCH" --squash --auto
+          # --auto errors when the PR is already mergeable ("Pull request
+          # is in clean status" — nothing to wait for). That state means
+          # every ruleset requirement is already satisfied, so a direct
+          # merge is the correct fallback. Otherwise auto-merge is
+          # enabled and the poll below waits for it.
+          gh pr merge "$BRANCH" --squash --auto \
+            || gh pr merge "$BRANCH" --squash
           # A merge performed by GITHUB_TOKEN fires no push event, so the
           # finalize cannot rely on another run — wait here for the merge
           # (Copilot review gates it; a manual merge also completes it),
