@@ -9,6 +9,11 @@ GoModel docs straight from GitHub, a TTL read cache that spares the Admin
 API, and an opt-in HTTP host mode so the server can run as a container
 anywhere. Runs on [Bun](https://bun.sh) or Node ≥ 18.
 
+[![Release CI](https://github.com/weselben/gomodel-admin-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/weselben/gomodel-admin-mcp/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/weselben/gomodel-admin-mcp)](https://github.com/weselben/gomodel-admin-mcp/releases)
+[![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
+[![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6)](https://bun.sh)
+
 ## Architecture: grouped tools, gradual discovery
 
 Instead of exposing 79 individual tools (~12k tokens of passive context),
