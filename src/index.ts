@@ -11,7 +11,7 @@ import { ADMIN_TOOLS, inputSchemaFor, type AdminTool } from "./tools.js";
 import { WRITE_TOOLS, type WriteTool } from "./write-tools.js";
 import { EXTRA_WRITE_TOOLS } from "./extra-write-tools.js";
 import { registerDocsTools } from "./docs.js";
-import { homogenizeJson } from "./homogenize.js";
+import { homogenizeJsonWithinLimit } from "./homogenize.js";
 import { READ_GROUPS, WRITE_GROUPS, resolveOperation, type ToolGroup } from "./groups.js";
 
 const BASE_URL = (process.env.GOMODEL_BASE_URL ?? "http://localhost:8080").replace(/\/+$/, "");
@@ -120,7 +120,7 @@ async function adminGet(tool: AdminTool, args: Record<string, unknown>, bypass: 
     throw new Error(`admin API ${res.status} ${res.statusText}: ${body.slice(0, 2000)}`);
   }
   // Homogenize before truncate so the cached text is the emitted text.
-  const text = truncate(homogenizeJson(body));
+  const text = truncate(homogenizeJsonWithinLimit(body, MAX_BYTES));
   cacheSet(url, text);
   return text;
 }
@@ -190,7 +190,7 @@ async function adminWrite(tool: WriteTool, args: Record<string, unknown>): Promi
   if (res.status === 204 || responseBody.length === 0) {
     return `${tool.method} ${tool.path} -> ${res.status} No Content`;
   }
-  return truncate(homogenizeJson(responseBody));
+  return truncate(homogenizeJsonWithinLimit(responseBody, MAX_BYTES));
 }
 
 /* ------------------------------------------------------------------ */

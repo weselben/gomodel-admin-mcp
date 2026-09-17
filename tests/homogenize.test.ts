@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { homogenizeJson } from "../src/homogenize.js";
+import { homogenizeJson, homogenizeJsonWithinLimit } from "../src/homogenize.js";
 
 describe("homogenizeJson", () => {
   test("pads missing keys with null and sorts the union of keys", () => {
@@ -58,5 +58,43 @@ describe("homogenizeJson", () => {
   test("output stays valid parseable JSON", () => {
     const input = JSON.stringify({ entries: [{ a: 1 }, { b: 2, c: [3] }] });
     expect(() => JSON.parse(homogenizeJson(input))).not.toThrow();
+  });
+
+  test("passes through input with integers beyond the exact range", () => {
+    const input = '[{"id":9007199254740993,"a":1},{"id":9007199254740993,"b":2}]';
+    expect(homogenizeJson(input)).toBe(input);
+  });
+
+  test("passes through non-array responses with unsafe integers", () => {
+    const input = '{"total_tokens": 9007199254740993}';
+    expect(homogenizeJson(input)).toBe(input);
+  });
+
+  test("digit runs inside strings do not trigger the unsafe-integer guard", () => {
+    const input = '[{"id":"9007199254740993","a":1},{"id":"9007199254740993","b":2}]';
+    expect(homogenizeJson(input)).toBe(
+      JSON.stringify([
+        { a: 1, b: null, id: "9007199254740993" },
+        { a: null, b: 2, id: "9007199254740993" },
+      ]),
+    );
+  });
+});
+
+describe("homogenizeJsonWithinLimit", () => {
+  const input = JSON.stringify([{ a: 1 }, { b: 2 }]);
+
+  test("returns the homogenized form when it fits", () => {
+    expect(homogenizeJsonWithinLimit(input, 1024)).toBe(homogenizeJson(input));
+  });
+
+  test("keeps the original when padding would cross the limit", () => {
+    const homogenized = homogenizeJson(input);
+    expect(homogenizeJsonWithinLimit(input, input.length)).toBe(input);
+    expect(homogenized.length).toBeGreaterThan(input.length);
+  });
+
+  test("homogenizes even when both forms exceed the limit", () => {
+    expect(homogenizeJsonWithinLimit(input, 4)).toBe(homogenizeJson(input));
   });
 });
