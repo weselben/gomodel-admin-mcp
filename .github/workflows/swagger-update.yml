@@ -1,0 +1,145 @@
+name: swagger-update
+
+on:
+  schedule:
+    # Daily 06:00 UTC — pulls the latest gomodel admin API surface into
+    # a human-reviewed PR.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      gomodel_ref:
+        description: gomodel ref to regenerate against (branch, tag, or SHA)
+        required: false
+        default: main
+
+# Multiple sources may trigger this at once; serialize to avoid
+# duplicate PRs racing.
+concurrency:
+  group: swagger-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout gomodel
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ENTERPILOT/GoModel
+          ref: ${{ inputs.gomodel_ref || 'main' }}
+          path: gomodel
+          fetch-depth: 1
+
+      - name: record gomodel SHA
+        id: gomsha
+        run: |
+          SHA="$(git -C gomodel rev-parse HEAD)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short=${SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: setup Go
+        uses: actions/setup-go@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: generate swagger.json (swag init)
+        # Same flags gomodel's own Makefile uses for its docs-openapi
+        # target, but we keep the 2.0 output (their target converts
+        # 2.0 -> 3.0 for the website; we feed 2.0 straight into our
+        # regenerator). swag version pinned for reproducible output.
+        run: |
+          go run github.com/swaggo/swag/v2/cmd/swag@v1.16.4 init \
+            --generalInfo main.go \
+            --dir cmd/gomodel,internal \
+            --output ./_swagout \
+            --outputTypes json \
+            --parseDependency \
+            --quiet
+
+      - name: regenerate admin swagger spec
+        run: |
+          bun scripts/regenerate-admin-swagger.mjs \
+            _swagout/swagger.json _new-admin-swagger.json
+
+      - name: checkout this repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: this
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: diff against current spec
+        id: diff
+        run: |
+          if cmp -s _new-admin-swagger.json this/spec/admin-swagger.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "spec is already up to date for gomodel ${{ steps.gomsha.outputs.short }}"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          bun -e '
+            const a = JSON.parse(await Bun.file("this/spec/admin-swagger.json").text());
+            const b = JSON.parse(await Bun.file("_new-admin-swagger.json").text());
+            const ak = new Set(Object.keys(a.paths)), bk = new Set(Object.keys(b.paths));
+            const ad = new Set(Object.keys(a.definitions)), bd = new Set(Object.keys(b.definitions));
+            console.log("paths_old=" + ak.size);
+            console.log("paths_new=" + bk.size);
+            console.log("paths_added=" + [...bk].filter(p => !ak.has(p)).length);
+            console.log("paths_removed=" + [...ak].filter(p => !bk.has(p)).length);
+            console.log("defs_old=" + ad.size);
+            console.log("defs_new=" + bd.size);
+            console.log("defs_added=" + [...bd].filter(d => !ad.has(d)).length);
+            console.log("defs_removed=" + [...ad].filter(d => !bd.has(d)).length);
+            console.log("added_paths=" + [...bk].filter(p => !ak.has(p)).join(", "));
+            console.log("removed_paths=" + [...ak].filter(p => !bk.has(p)).join(", "));
+          ' | tee -a "$GITHUB_OUTPUT"
+
+      - name: open PR
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd this
+          BRANCH="chore/swagger-update-${{ steps.gomsha.outputs.short }}"
+          git config user.name "release-ci"
+          git config user.email "actions@github.com"
+          git checkout -B "$BRANCH" origin/main
+          cp ../_new-admin-swagger.json spec/admin-swagger.json
+          printf 'gomodel_commit: %s\ngenerated_at: %s\n' \
+            "${{ steps.gomsha.outputs.sha }}" \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > spec/gomodel-source.txt
+          git add spec/admin-swagger.json spec/gomodel-source.txt
+          if git diff --cached --quiet; then
+            echo "no spec changes after staging"
+            exit 0
+          fi
+          git commit -m "chore: update admin swagger spec from gomodel ${{ steps.gomsha.outputs.short }}"
+          git push -f origin "$BRANCH"
+          # Release policy: nothing auto-merges. Human review/merge is the gate.
+          gh pr create --base main --head "$BRANCH" \
+            --title "chore: update admin swagger spec from gomodel ${{ steps.gomsha.outputs.short }}" \
+            --body "$(cat <<EOF
+Automated regeneration of \`spec/admin-swagger.json\` from upstream [ENTERPILOT/GoModel](https://github.com/ENTERPILOT/GoModel) \`${{ steps.gomsha.outputs.sha }}\`.
+
+|  | paths | definitions |
+|---|---|---|
+| before | ${{ steps.diff.outputs.paths_old }} | ${{ steps.diff.outputs.defs_old }} |
+| after | ${{ steps.diff.outputs.paths_new }} | ${{ steps.diff.outputs.defs_new }} |
+
+**Added paths**: ${{ steps.diff.outputs.paths_added }} — \`${{ steps.diff.outputs.added_paths }}\`
+**Removed paths**: ${{ steps.diff.outputs.paths_removed }} — \`${{ steps.diff.outputs.removed_paths }}\`
+
+\`spec/gomodel-source.txt\` records the gomodel commit and generation time. The workflow is human-gated — no auto-merge.
+
+Merging this PR does **not** fire a release flow (\`spec/**\` is not a watched path). If you want a release to ship alongside the spec bump, add \`spec/**\` to the release workflow's \`paths:\` filter in a separate change.
+EOF
+)"
+
+      - name: up-to-date summary
+        if: steps.diff.outputs.changed != 'true'
+        run: |
+          echo "spec/admin-swagger.json already matches gomodel ${{ steps.gomsha.outputs.sha }} — no PR needed."
