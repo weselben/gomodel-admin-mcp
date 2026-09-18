@@ -106,3 +106,23 @@ Docker build context.
   actions — `actions/setup-go@<setup-bun SHA>` resolves to nothing and
   fails the job before any step runs (empty jobs list, failure email).
   Resolve each action's SHA separately from its own repo.
+
+## Review babysitting (Greptile + CodeRabbit)
+
+Two review bots comment on PRs: **CodeRabbit** (`coderabbitai[bot]`,
+inline review comments on `pulls/<n>/comments`) and **Greptile**
+(`greptile-apps[bot]`, same endpoint). When babysitting a PR, read BOTH
+before triaging. A finding is valid only if the referenced code still
+shows the problem on the current branch head.
+
+- Resolve valid findings with a commit on the PR branch; reply to each
+  thread with the fix commit SHA and end every reply with
+  `> written by AI` so the three voices (author, reviewer bots, resolver)
+  stay distinguishable.
+- Invalid or superseded findings get a short reply explaining why.
+- Finish with one summary comment listing resolved/dismissed counts,
+  also ending with `> written by AI`.
+- Greptile severity badges: P0/P1 = fix before merge; P2 = fix or
+  consciously dismiss with a one-line reason.
+- Never merge the author's feature PR — the babysit resolves review
+  findings only. Only CI-fix PRs may be created and merged by the agent.
