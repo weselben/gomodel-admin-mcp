@@ -82,8 +82,21 @@ function cacheInvalidateAll(): void {
 /* ------------------------------------------------------------------ */
 
 function truncate(text: string): string {
-  if (text.length <= MAX_BYTES) return text;
-  return `${text.slice(0, MAX_BYTES)}\n\n[truncated: response exceeded ${MAX_BYTES} bytes]`;
+  // Measure in UTF-8 bytes: multibyte JSON must honor the cap even when its
+  // JavaScript length fits, and the cut must never split a multibyte
+  // character.
+  if (Buffer.byteLength(text, "utf8") <= MAX_BYTES) return text;
+  let bytes = 0;
+  let end = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const cp = text.codePointAt(i) as number;
+    const chLen = cp > 0xffff ? 4 : cp > 0x7ff ? 3 : cp > 0x7f ? 2 : 1;
+    if (bytes + chLen > MAX_BYTES) break;
+    bytes += chLen;
+    end = i + (cp > 0xffff ? 2 : 1);
+    if (cp > 0xffff) i += 1;
+  }
+  return `${text.slice(0, end)}\n\n[truncated: response exceeded ${MAX_BYTES} bytes]`;
 }
 
 function buildUrl(tool: AdminTool, args: Record<string, unknown>): string {
@@ -147,7 +160,7 @@ async function collectLiveLogs(args: Record<string, unknown>): Promise<string> {
   let collected = "";
   const deadline = Date.now() + seconds * 1000;
   try {
-    while (Date.now() < deadline && collected.length < MAX_BYTES) {
+    while (Date.now() < deadline && Buffer.byteLength(collected, "utf8") < MAX_BYTES) {
       const remaining = deadline - Date.now();
       const chunk = await Promise.race([
         reader.read(),

@@ -81,11 +81,16 @@ export function homogenizeJson(text: string): string {
 
 /**
  * Homogenize unless the original string fits `maxBytes` and the homogenized
- * string does not. Length is measured as JavaScript string length to match the
- * caller's truncation check; input already over the limit remains homogenized.
+ * string does not. Length is measured in UTF-8 bytes to match the caller's
+ * truncation check; input already over the limit remains homogenized.
  */
 export function homogenizeJsonWithinLimit(text: string, maxBytes: number): string {
   const homogenized = homogenizeJson(text);
-  if (homogenized.length > maxBytes && text.length <= maxBytes) return text;
+  if (
+    Buffer.byteLength(homogenized, "utf8") > maxBytes &&
+    Buffer.byteLength(text, "utf8") <= maxBytes
+  ) {
+    return text;
+  }
   return homogenized;
 }

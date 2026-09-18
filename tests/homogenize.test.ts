@@ -114,4 +114,15 @@ describe("homogenizeJsonWithinLimit", () => {
   test("homogenizes even when both forms exceed the limit", () => {
     expect(homogenizeJsonWithinLimit(input, 4)).toBe(homogenizeJson(input));
   });
+
+  test("measures the limit in UTF-8 bytes, not JavaScript string length", () => {
+    const mb = JSON.stringify([{ a: "☃".repeat(7) }, { b: 1 }]);
+    const homogenized = homogenizeJson(mb);
+    // The homogenized JavaScript length fits 50, its UTF-8 bytes do not;
+    // the original fits both — the byte cap must win.
+    expect(homogenized.length).toBeLessThanOrEqual(50);
+    expect(Buffer.byteLength(homogenized, "utf8")).toBeGreaterThan(50);
+    expect(Buffer.byteLength(mb, "utf8")).toBeLessThanOrEqual(50);
+    expect(homogenizeJsonWithinLimit(mb, 50)).toBe(mb);
+  });
 });
