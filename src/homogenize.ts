@@ -9,11 +9,12 @@
  * of all keys, missing keys padded with null. Values are never changed, but
  * absent and null become indistinguishable. Non-JSON input passes through.
  *
- * Two lossless-by-abstention guards: input containing integers outside
- * JavaScript's exact range passes through untouched (JSON.parse would round
- * them), and homogenizeJsonWithinLimit falls back to the original text when
- * null padding would push an in-limit body over the byte cap, so downstream
- * truncation never slices JSON that previously fit.
+ * Two lossless-by-abstention guards: input containing numbers JSON cannot
+ * round-trip — integers outside JavaScript's exact range (would round) or
+ * exponent forms that overflow to Infinity (would serialize as null) —
+ * passes through untouched, and homogenizeJsonWithinLimit falls back to the
+ * original text when null padding would push an in-limit body over the byte
+ * cap, so downstream truncation never slices JSON that previously fit.
  */
 
 type JsonObject = Record<string, unknown>;
@@ -21,13 +22,20 @@ type JsonObject = Record<string, unknown>;
 /** Matches a string literal or a number, so digit runs inside strings are ignored. */
 const STRING_OR_NUMBER = /"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
 
-/** True when the text holds an integer JSON.parse cannot represent exactly. */
-function hasUnsafeInteger(text: string): boolean {
+/**
+ * True when the text holds a number JSON.parse cannot represent safely:
+ * either an integer outside JavaScript's exact range (would round silently)
+ * or an exponent form parsed as Infinity (would serialize as null).
+ */
+function hasUnsafeNumeric(text: string): boolean {
   for (const [token] of text.matchAll(STRING_OR_NUMBER)) {
-    if (token.startsWith('"') || token.includes(".") || token.includes("e") || token.includes("E")) {
-      continue;
-    }
-    if (token.replace(/^-/, "").length > 15 && BigInt(token) !== BigInt(Number(token))) {
+    if (token.startsWith('"')) continue;
+    const n = Number(token);
+    // Exponent forms like 1e400 or a ~309-digit integer overflow to Infinity;
+    // JSON.stringify would then emit null — a silent value change.
+    if (!Number.isFinite(n)) return true;
+    if (token.includes(".") || token.includes("e") || token.includes("E")) continue;
+    if (token.replace(/^-/, "").length > 15 && BigInt(token) !== BigInt(n)) {
       return true;
     }
   }
@@ -56,11 +64,12 @@ function homogenizeValue(value: unknown): unknown {
 
 /**
  * Parse and compactly reserialize JSON after recursively aligning multi-item
- * object arrays. Invalid JSON and input containing an integer that cannot be
- * represented exactly as a JavaScript number pass through unchanged.
+ * object arrays. Invalid JSON and input containing a number that cannot be
+ * represented safely — an integer outside JavaScript's exact range, or an
+ * exponent form that overflows to Infinity — passes through unchanged.
  */
 export function homogenizeJson(text: string): string {
-  if (hasUnsafeInteger(text)) return text;
+  if (hasUnsafeNumeric(text)) return text;
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);

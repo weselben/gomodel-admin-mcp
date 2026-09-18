@@ -79,6 +79,23 @@ describe("homogenizeJson", () => {
       ]),
     );
   });
+
+  test("passes through exponent-form numbers that overflow to Infinity", () => {
+    const input = '[{"usage":1e400,"a":1},{"usage":1e400,"b":2}]';
+    expect(homogenizeJson(input)).toBe(input);
+  });
+
+  test("passes through ~309-digit integers without throwing", () => {
+    const big = "1".repeat(309);
+    const input = `[{"v":${big},"a":1},{"v":${big},"b":2}]`;
+    expect(homogenizeJson(input)).toBe(input);
+  });
+
+  test("passes through raw_data payloads containing overflowing exponents", () => {
+    const input =
+      '[{"raw_data":{"latency":1e400,"name":"x"}},{"raw_data":{"latency":2.5,"name":"y"}}]';
+    expect(homogenizeJson(input)).toBe(input);
+  });
 });
 
 describe("homogenizeJsonWithinLimit", () => {
