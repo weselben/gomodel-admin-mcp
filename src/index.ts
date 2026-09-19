@@ -11,6 +11,7 @@ import { ADMIN_TOOLS, inputSchemaFor, type AdminTool } from "./tools.js";
 import { WRITE_TOOLS, type WriteTool } from "./write-tools.js";
 import { EXTRA_WRITE_TOOLS } from "./extra-write-tools.js";
 import { registerDocsTools } from "./docs.js";
+import { homogenizeJsonWithinLimit } from "./homogenize.js";
 import { READ_GROUPS, WRITE_GROUPS, resolveOperation, type ToolGroup } from "./groups.js";
 
 const BASE_URL = (process.env.GOMODEL_BASE_URL ?? "http://localhost:8080").replace(/\/+$/, "");
@@ -81,8 +82,24 @@ function cacheInvalidateAll(): void {
 /* ------------------------------------------------------------------ */
 
 function truncate(text: string): string {
-  if (text.length <= MAX_BYTES) return text;
-  return `${text.slice(0, MAX_BYTES)}\n\n[truncated: response exceeded ${MAX_BYTES} bytes]`;
+  // Measure in UTF-8 bytes: multibyte JSON must honor the cap even when its
+  // JavaScript length fits, and the cut must never split a multibyte
+  // character. The marker's own bytes are reserved so prefix + marker stays
+  // within the cap.
+  if (Buffer.byteLength(text, "utf8") <= MAX_BYTES) return text;
+  const marker = `\n\n[truncated: response exceeded ${MAX_BYTES} bytes]`;
+  const limit = MAX_BYTES - Buffer.byteLength(marker, "utf8");
+  let bytes = 0;
+  let end = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const cp = text.codePointAt(i) as number;
+    const chLen = cp > 0xffff ? 4 : cp > 0x7ff ? 3 : cp > 0x7f ? 2 : 1;
+    if (bytes + chLen > limit) break;
+    bytes += chLen;
+    end = i + (cp > 0xffff ? 2 : 1);
+    if (cp > 0xffff) i += 1;
+  }
+  return `${text.slice(0, end)}${marker}`;
 }
 
 function buildUrl(tool: AdminTool, args: Record<string, unknown>): string {
@@ -104,6 +121,11 @@ function buildUrl(tool: AdminTool, args: Record<string, unknown>): string {
   return url.toString();
 }
 
+/**
+ * Fetch an admin read, skipping cache lookup when `bypass` is true. Successful
+ * JSON is homogenized and truncated before the result is cached; non-success
+ * responses throw with a bounded response excerpt.
+ */
 async function adminGet(tool: AdminTool, args: Record<string, unknown>, bypass: boolean): Promise<string> {
   const url = buildUrl(tool, args);
   if (!bypass) {
@@ -118,8 +140,8 @@ async function adminGet(tool: AdminTool, args: Record<string, unknown>, bypass: 
   if (!res.ok) {
     throw new Error(`admin API ${res.status} ${res.statusText}: ${body.slice(0, 2000)}`);
   }
-  // Cache the truncated text — a cache hit must not bypass MAX_BYTES.
-  const text = truncate(body);
+  // Homogenize before truncate so the cached text is the emitted text.
+  const text = truncate(homogenizeJsonWithinLimit(body, MAX_BYTES));
   cacheSet(url, text);
   return text;
 }
@@ -141,7 +163,7 @@ async function collectLiveLogs(args: Record<string, unknown>): Promise<string> {
   let collected = "";
   const deadline = Date.now() + seconds * 1000;
   try {
-    while (Date.now() < deadline && collected.length < MAX_BYTES) {
+    while (Date.now() < deadline && Buffer.byteLength(collected, "utf8") < MAX_BYTES) {
       const remaining = deadline - Date.now();
       const chunk = await Promise.race([
         reader.read(),
@@ -168,6 +190,12 @@ function buildUrlFromPath(path: string, args: Record<string, unknown>): string {
   return `${BASE_URL}/admin${pathname}`;
 }
 
+/**
+ * Submit an admin write and invalidate all cached reads after success.
+ * Empty or 204 responses return a status summary; other JSON responses are
+ * homogenized and truncated. Non-success responses throw with a bounded
+ * response excerpt.
+ */
 async function adminWrite(tool: WriteTool, args: Record<string, unknown>): Promise<string> {
   const url = buildUrlFromPath(tool.path, args);
   const body = JSON.stringify(tool.body(args));
@@ -189,7 +217,7 @@ async function adminWrite(tool: WriteTool, args: Record<string, unknown>): Promi
   if (res.status === 204 || responseBody.length === 0) {
     return `${tool.method} ${tool.path} -> ${res.status} No Content`;
   }
-  return truncate(responseBody);
+  return truncate(homogenizeJsonWithinLimit(responseBody, MAX_BYTES));
 }
 
 /* ------------------------------------------------------------------ */

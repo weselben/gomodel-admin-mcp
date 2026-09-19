@@ -46,6 +46,11 @@ When editing code:
   request. Do not share a server across requests.
 - Reads go through the TTL cache (`params.cache_bypass` escapes it);
   writes invalidate the cache.
+- JSON responses are homogenized (`src/homogenize.ts`): arrays of objects
+  get a uniform sorted key set, missing keys padded with `null`. This keeps
+  output valid JSON while making list responses eligible for GoModel Pro's
+  JSON-table prompt compression. Preserve the invariant: emitted bytes stay
+  plain JSON, never a `$gomodel:`-encoded form.
 - Never bind a port unless `GOMODEL_HTTP_TOKEN` is set; without it the
   server is stdio-only.
 - Do not expose real admin keys, HTTP tokens, or gateway URLs. Placeholders
