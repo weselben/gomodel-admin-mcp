@@ -122,6 +122,8 @@ describe("error handling", () => {
         expect(res.text.includes("�")).toBe(false);
         const prefix = res.text.slice(0, res.text.indexOf("\n\n[truncated"));
         expect(Buffer.byteLength(prefix, "utf8")).toBeLessThanOrEqual(262144);
+        // The complete output, marker included, stays within the cap.
+        expect(Buffer.byteLength(res.text, "utf8")).toBeLessThanOrEqual(262144);
         // The cut landed on a full character (snowman), never mid-sequence.
         expect(prefix.endsWith("☃")).toBe(true);
       } finally {
