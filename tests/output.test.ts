@@ -43,8 +43,14 @@ describe("truncate", () => {
 
 describe("resolveMaxBytes", () => {
   test("defaults to 256 KiB when unset", () => {
-    expect(resolveMaxBytes("")).toBe(DEFAULT_MAX_BYTES);
-    expect(resolveMaxBytes(undefined)).toBe(DEFAULT_MAX_BYTES);
+    const saved = process.env.GOMODEL_MAX_OUTPUT_BYTES;
+    delete process.env.GOMODEL_MAX_OUTPUT_BYTES;
+    try {
+      expect(resolveMaxBytes("")).toBe(DEFAULT_MAX_BYTES);
+      expect(resolveMaxBytes(undefined)).toBe(DEFAULT_MAX_BYTES);
+    } finally {
+      if (saved !== undefined) process.env.GOMODEL_MAX_OUTPUT_BYTES = saved;
+    }
   });
 
   test("invalid values fall back to the default", () => {
