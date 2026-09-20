@@ -109,6 +109,32 @@ describe("error handling", () => {
     }
   });
 
+  test("multibyte truncation respects the byte cap and splits no character", async () => {
+    const mock = await startMock();
+    try {
+      process.env.MOCK_HUGE_MB = "1";
+      const mcp = await startMcp({ GOMODEL_BASE_URL: mock.url });
+      try {
+        const res = await mcp.call("admin_usage", { operation: "get_usage_summary" });
+        expect(res.isError).toBe(false);
+        expect(res.text).toContain("[truncated: response exceeded 262144 bytes]");
+        // No broken multibyte sequences (UTF-8 replacement character).
+        expect(res.text.includes("�")).toBe(false);
+        const prefix = res.text.slice(0, res.text.indexOf("\n\n[truncated"));
+        expect(Buffer.byteLength(prefix, "utf8")).toBeLessThanOrEqual(262144);
+        // The complete output, marker included, stays within the cap.
+        expect(Buffer.byteLength(res.text, "utf8")).toBeLessThanOrEqual(262144);
+        // The cut landed on a full character (snowman), never mid-sequence.
+        expect(prefix.endsWith("☃")).toBe(true);
+      } finally {
+        delete process.env.MOCK_HUGE_MB;
+        await mcp.close();
+      }
+    } finally {
+      await mock.close();
+    }
+  });
+
   test("mock down — connection refused", async () => {
     const mcp = await startMcp({ GOMODEL_BASE_URL: "http://127.0.0.1:9" });
     try {

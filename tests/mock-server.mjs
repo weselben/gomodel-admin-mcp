@@ -379,6 +379,14 @@ export function createMockServer() {
       return send(200, JSON.stringify({ entries, total: entries.length }));
     }
 
+    // Multibyte huge payload: byte-length cap must hold even where the
+    // JavaScript string length fits, and truncation must not split a
+    // multibyte character.
+    if (process.env.MOCK_HUGE_MB === "1" && method === "GET" && route.path === "/admin/usage/summary") {
+      const pad = "☃".repeat(200_000);
+      return send(200, JSON.stringify({ pad, note: "multibyte" }));
+    }
+
     const payload = route.schema
       ? synthExample(route.schema)
       : fallbackPayload(method, route.path);
