@@ -26,6 +26,13 @@ describe("truncate", () => {
     const cut = truncate(input);
     expect(Buffer.byteLength(cut, "utf8")).toBeLessThanOrEqual(MAX_BYTES);
   });
+
+  test("caps smaller than the marker still bound the result", () => {
+    for (const cap of [0, 1, 10, 39]) {
+      const cut = truncate("x".repeat(100), cap);
+      expect(Buffer.byteLength(cut, "utf8")).toBeLessThanOrEqual(cap);
+    }
+  });
 });
 
 describe("normalizeOutput", () => {

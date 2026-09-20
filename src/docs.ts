@@ -231,9 +231,12 @@ const REGEX_METACHARS = /[\\^$|?*+()[\]{}]/;
 async function docsIndexText(args: Record<string, unknown>): Promise<string> {
   const pages = await getIndex(args.refresh === true);
   const header = `${REPO}@${REF} — ${pages.length} pages`;
-  return `${header}\n${normalizeOutput(
-    JSON.stringify(pages.map(({ path, title, group }) => ({ path, title, group }))),
-  )}`;
+  // Assemble first, then bound: the header must count toward the byte cap.
+  return truncate(
+    `${header}\n${normalizeOutput(
+      JSON.stringify(pages.map(({ path, title, group }) => ({ path, title, group }))),
+    )}`,
+  );
 }
 
 async function docsSearchText(args: Record<string, unknown>): Promise<string> {
