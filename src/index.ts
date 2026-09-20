@@ -11,7 +11,7 @@ import { ADMIN_TOOLS, inputSchemaFor, type AdminTool } from "./tools.js";
 import { WRITE_TOOLS, type WriteTool } from "./write-tools.js";
 import { EXTRA_WRITE_TOOLS } from "./extra-write-tools.js";
 import { registerDocsTools } from "./docs.js";
-import { homogenizeJsonWithinLimit } from "./homogenize.js";
+import { MAX_BYTES, normalizeOutput, truncate } from "./output.js";
 import { READ_GROUPS, WRITE_GROUPS, resolveOperation, type ToolGroup } from "./groups.js";
 
 const BASE_URL = (process.env.GOMODEL_BASE_URL ?? "http://localhost:8080").replace(/\/+$/, "");
@@ -40,7 +40,6 @@ const PKG_VERSION = (() => {
     return "0.0.0";
   }
 })();
-const MAX_BYTES = 256 * 1024;
 
 if (!HAS_KEY) {
   console.error(
@@ -81,27 +80,6 @@ function cacheInvalidateAll(): void {
 /* Admin API plumbing (unchanged contract, now cache-aware).           */
 /* ------------------------------------------------------------------ */
 
-function truncate(text: string): string {
-  // Measure in UTF-8 bytes: multibyte JSON must honor the cap even when its
-  // JavaScript length fits, and the cut must never split a multibyte
-  // character. The marker's own bytes are reserved so prefix + marker stays
-  // within the cap.
-  if (Buffer.byteLength(text, "utf8") <= MAX_BYTES) return text;
-  const marker = `\n\n[truncated: response exceeded ${MAX_BYTES} bytes]`;
-  const limit = MAX_BYTES - Buffer.byteLength(marker, "utf8");
-  let bytes = 0;
-  let end = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    const cp = text.codePointAt(i) as number;
-    const chLen = cp > 0xffff ? 4 : cp > 0x7ff ? 3 : cp > 0x7f ? 2 : 1;
-    if (bytes + chLen > limit) break;
-    bytes += chLen;
-    end = i + (cp > 0xffff ? 2 : 1);
-    if (cp > 0xffff) i += 1;
-  }
-  return `${text.slice(0, end)}${marker}`;
-}
-
 function buildUrl(tool: AdminTool, args: Record<string, unknown>): string {
   let path = tool.path;
   for (const match of tool.path.matchAll(/\{(\w+)\}/g)) {
@@ -141,7 +119,7 @@ async function adminGet(tool: AdminTool, args: Record<string, unknown>, bypass: 
     throw new Error(`admin API ${res.status} ${res.statusText}: ${body.slice(0, 2000)}`);
   }
   // Homogenize before truncate so the cached text is the emitted text.
-  const text = truncate(homogenizeJsonWithinLimit(body, MAX_BYTES));
+  const text = normalizeOutput(body);
   cacheSet(url, text);
   return text;
 }
@@ -217,7 +195,7 @@ async function adminWrite(tool: WriteTool, args: Record<string, unknown>): Promi
   if (res.status === 204 || responseBody.length === 0) {
     return `${tool.method} ${tool.path} -> ${res.status} No Content`;
   }
-  return truncate(homogenizeJsonWithinLimit(responseBody, MAX_BYTES));
+  return normalizeOutput(responseBody);
 }
 
 /* ------------------------------------------------------------------ */
@@ -379,7 +357,7 @@ function buildServer(): McpServer {
         total_tools:
           REGISTERED_READ_GROUPS.length + REGISTERED_WRITE_GROUPS.length + docsToolCount + 1,
       };
-      return textResult(JSON.stringify(info, null, 2));
+      return textResult(normalizeOutput(JSON.stringify(info)));
     },
   );
 

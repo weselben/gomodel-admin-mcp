@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
+import { normalizeOutput, truncate } from "./output.js";
+
 /**
  * Live documentation tools: fetch the GoModel docs anonymously from GitHub
  * (Mintlify docs.json index + raw page contents) so the agent can read the
@@ -11,7 +13,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 const REPO = process.env.GOMODEL_DOCS_REPO ?? "ENTERPILOT/GoModel";
 const REF = process.env.GOMODEL_DOCS_REF ?? "main";
 
-const MAX_BYTES = 256 * 1024;
 const INDEX_TTL_MS = 15 * 60 * 1000;
 const CONTENT_TTL_MS = 15 * 60 * 1000;
 const FETCH_CONCURRENCY = 8;
@@ -33,11 +34,6 @@ interface CacheEntry {
 let index: DocPage[] | null = null;
 let indexFetchedAt = 0;
 const contentCache = new Map<string, CacheEntry>();
-
-function truncate(text: string): string {
-  if (text.length <= MAX_BYTES) return text;
-  return `${text.slice(0, MAX_BYTES)}\n\n[truncated: response exceeded ${MAX_BYTES} bytes]`;
-}
 
 /** Anonymous GET of a raw/text URL. Resolves null on 404, throws otherwise. */
 async function fetchDocText(url: string): Promise<string | null> {
@@ -235,10 +231,8 @@ const REGEX_METACHARS = /[\\^$|?*+()[\]{}]/;
 async function docsIndexText(args: Record<string, unknown>): Promise<string> {
   const pages = await getIndex(args.refresh === true);
   const header = `${REPO}@${REF} — ${pages.length} pages`;
-  return `${header}\n${JSON.stringify(
-    pages.map(({ path, title, group }) => ({ path, title, group })),
-    null,
-    2,
+  return `${header}\n${normalizeOutput(
+    JSON.stringify(pages.map(({ path, title, group }) => ({ path, title, group }))),
   )}`;
 }
 
