@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { MAX_BYTES, normalizeOutput, truncate } from "../src/output.js";
+import { DEFAULT_MAX_BYTES, MAX_BYTES, normalizeOutput, resolveMaxBytes, truncate } from "../src/output.js";
 
 describe("truncate", () => {
   test("returns input unchanged when it fits", () => {
@@ -12,11 +12,11 @@ describe("truncate", () => {
     expect(truncate(snowmen, 100)).toBe(snowmen);
     const cut = truncate("☃".repeat(100), 50); // 50 chars but 300 bytes
     expect(Buffer.byteLength(cut, "utf8")).toBeLessThanOrEqual(50);
-    expect(cut).toContain("[truncated: response exceeded 50 bytes]");
+    expect(cut).toContain("[truncated: response exceeded 50 bytes");
   });
 
   test("never splits a multibyte character", () => {
-    const cut = truncate("ab" + "☃".repeat(100), 50);
+    const cut = truncate("ab" + "☃".repeat(100), 120);
     expect(cut.endsWith("�")).toBe(false);
     expect(cut.startsWith("ab")).toBe(true);
   });
@@ -32,6 +32,30 @@ describe("truncate", () => {
       const cut = truncate("x".repeat(100), cap);
       expect(Buffer.byteLength(cut, "utf8")).toBeLessThanOrEqual(cap);
     }
+  });
+
+  test("the truncation marker points at pagination", () => {
+    const cut = truncate("x".repeat(200), 120);
+    expect(cut).toContain("limit/offset");
+  });
+});
+
+describe("resolveMaxBytes", () => {
+  test("defaults to 256 KiB when unset", () => {
+    expect(resolveMaxBytes("")).toBe(DEFAULT_MAX_BYTES);
+    expect(resolveMaxBytes(undefined)).toBe(DEFAULT_MAX_BYTES);
+  });
+
+  test("garbage input falls back to the default", () => {
+    expect(resolveMaxBytes("abc")).toBe(DEFAULT_MAX_BYTES);
+  });
+
+  test("clamps into the sane range", () => {
+    expect(resolveMaxBytes("1")).toBe(1024);
+    expect(resolveMaxBytes("-5")).toBe(1024);
+    expect(resolveMaxBytes("1.5")).toBe(1024);
+    expect(resolveMaxBytes("4096")).toBe(4096);
+    expect(resolveMaxBytes("999999999")).toBe(8 * 1024 * 1024);
   });
 });
 

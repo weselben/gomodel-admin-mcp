@@ -51,6 +51,8 @@ When editing code:
   output valid JSON while making list responses eligible for GoModel Pro's
   JSON-table prompt compression. Preserve the invariant: emitted bytes stay
   plain JSON, never a `$gomodel:`-encoded form.
+- Tool results are capped at `GOMODEL_MAX_OUTPUT_BYTES` (default 256 KiB)
+  with a marker that hints at `limit`/`offset` pagination.
 - Never bind a port unless `GOMODEL_HTTP_TOKEN` is set; without it the
   server is stdio-only.
 - Do not expose real admin keys, HTTP tokens, or gateway URLs. Placeholders

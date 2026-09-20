@@ -8,16 +8,31 @@
 
 import { homogenizeJsonWithinLimit } from "./homogenize.js";
 
-export const MAX_BYTES = 256 * 1024;
+export const DEFAULT_MAX_BYTES = 256 * 1024;
+
+/**
+ * Parse `GOMODEL_MAX_OUTPUT_BYTES`; unset or out-of-range values fall back
+ * to DEFAULT_MAX_BYTES so a typo can never zero the budget. Lets users on
+ * harnesses with smaller tool-result caps get a clean marker (and the
+ * pagination hint) instead of a mid-JSON cut from their client.
+ */
+export function resolveMaxBytes(raw = process.env.GOMODEL_MAX_OUTPUT_BYTES ?? ""): number {
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value)) return DEFAULT_MAX_BYTES;
+  return Math.min(Math.max(value, 1024), 8 * 1024 * 1024);
+}
+
+export const MAX_BYTES = resolveMaxBytes();
 
 export function truncate(text: string, maxBytes: number = MAX_BYTES): string {
   // Measure in UTF-8 bytes: multibyte JSON must honor the cap even when its
   // JavaScript length fits, and the cut must never split a multibyte
   // character. The marker's own bytes are reserved so prefix + marker stays
   // within the cap; a cap smaller than the marker yields a UTF-8-safe marker
-  // prefix so the guarantee holds for every cap.
+  // prefix so the guarantee holds for every cap. The hint points agents at
+  // pagination, which is the correct answer to any cap.
   if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
-  const marker = `\n\n[truncated: response exceeded ${maxBytes} bytes]`;
+  const marker = `\n\n[truncated: response exceeded ${maxBytes} bytes — narrow with limit/offset or filters]`;
   const markerBytes = Buffer.byteLength(marker, "utf8");
   if (markerBytes > maxBytes) return utf8Prefix(marker, maxBytes);
   return `${utf8Prefix(text, maxBytes - markerBytes)}${marker}`;
