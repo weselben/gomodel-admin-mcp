@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { normalizeOutput, truncate } from "./output.js";
+import { envInt } from "./env.js";
 
 /**
  * Live documentation tools: fetch the GoModel docs anonymously from GitHub
@@ -15,11 +16,13 @@ const REF = process.env.GOMODEL_DOCS_REF ?? "main";
 
 // GitHub degrades often enough that stale docs beat no docs: 30 min default,
 // overridable; clamped so a typo can never disable or freeze the cache.
-const DOCS_CACHE_TTL_SECONDS = (() => {
-  const value = Number.parseInt(process.env.GOMODEL_DOCS_CACHE_TTL_SECONDS ?? "", 10);
-  if (!Number.isFinite(value)) return 1800;
-  return Math.min(Math.max(value, 60), 86400);
-})();
+export const DEFAULT_DOCS_CACHE_TTL_SECONDS = 1800;
+const DOCS_CACHE_TTL_SECONDS = envInt(
+  "GOMODEL_DOCS_CACHE_TTL_SECONDS",
+  DEFAULT_DOCS_CACHE_TTL_SECONDS,
+  60,
+  86400,
+);
 const INDEX_TTL_MS = DOCS_CACHE_TTL_SECONDS * 1000;
 const CONTENT_TTL_MS = DOCS_CACHE_TTL_SECONDS * 1000;
 const FETCH_CONCURRENCY = 8;
@@ -330,7 +333,7 @@ export function registerDocsTools(server: McpServer): number {
     {
       name: "docs_index",
       description:
-        `List the GoModel documentation pages fetched live from GitHub (Mintlify docs.json index). Returns a repo@ref header line with the page count, then a JSON array of {path, title, group} sorted by path. Cached for ${DOCS_CACHE_TTL_SECONDS}s (default 1800, GOMODEL_DOCS_CACHE_TTL_SECONDS); pass refresh to bust.`,
+        `List the GoModel documentation pages fetched live from GitHub (Mintlify docs.json index). Returns a repo@ref header line with the page count, then a JSON array of {path, title, group} sorted by path. Cached for ${DOCS_CACHE_TTL_SECONDS}s (default ${DEFAULT_DOCS_CACHE_TTL_SECONDS}, GOMODEL_DOCS_CACHE_TTL_SECONDS); pass refresh to bust.`,
       schema: {
         refresh: z.boolean().optional().describe("Bust the cached index and page contents and refetch"),
       },
@@ -339,7 +342,7 @@ export function registerDocsTools(server: McpServer): number {
     {
       name: "docs_search",
       description:
-        `Search the GoModel documentation full text. Case-insensitive substring match by default; a regex-looking query (metacharacters or leading ^) is treated as a case-insensitive regex. Output is ripgrep-style lines: docs/path.mdx:LINE: text. Index and page contents are cached for ${DOCS_CACHE_TTL_SECONDS}s (default 1800, GOMODEL_DOCS_CACHE_TTL_SECONDS); pass refresh to bust.`,
+        `Search the GoModel documentation full text. Case-insensitive substring match by default; a regex-looking query (metacharacters or leading ^) is treated as a case-insensitive regex. Output is ripgrep-style lines: docs/path.mdx:LINE: text. Index and page contents are cached for ${DOCS_CACHE_TTL_SECONDS}s (default ${DEFAULT_DOCS_CACHE_TTL_SECONDS}, GOMODEL_DOCS_CACHE_TTL_SECONDS); pass refresh to bust.`,
       schema: {
         query: z.string().min(1).describe("Substring or regular expression to search for"),
         max_results: z.number().optional().describe("Maximum matching lines to return (default 50, cap 200)"),
@@ -350,7 +353,7 @@ export function registerDocsTools(server: McpServer): number {
     {
       name: "docs_get",
       description:
-        `Fetch one full GoModel documentation page by path (relative to docs/, extension optional — unique suffix matches work too). First line is a docs/path (bytes) header, followed by the raw page content. Cached for ${DOCS_CACHE_TTL_SECONDS}s (default 1800, GOMODEL_DOCS_CACHE_TTL_SECONDS); pass refresh to bust.`,
+        `Fetch one full GoModel documentation page by path (relative to docs/, extension optional — unique suffix matches work too). First line is a docs/path (bytes) header, followed by the raw page content. Cached for ${DOCS_CACHE_TTL_SECONDS}s (default ${DEFAULT_DOCS_CACHE_TTL_SECONDS}, GOMODEL_DOCS_CACHE_TTL_SECONDS); pass refresh to bust.`,
       schema: {
         path: z.string().min(1).describe('Page path, e.g. "guides/foo.mdx" or a unique suffix "foo.mdx"'),
         refresh: z.boolean().optional().describe("Bust this page's cached content and refetch"),

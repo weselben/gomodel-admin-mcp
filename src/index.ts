@@ -12,6 +12,7 @@ import { WRITE_TOOLS, type WriteTool } from "./write-tools.js";
 import { EXTRA_WRITE_TOOLS } from "./extra-write-tools.js";
 import { registerDocsTools } from "./docs.js";
 import { MAX_BYTES, normalizeOutput, truncate } from "./output.js";
+import { envInt } from "./env.js";
 import { READ_GROUPS, WRITE_GROUPS, resolveOperation, type ToolGroup } from "./groups.js";
 
 const BASE_URL = (process.env.GOMODEL_BASE_URL ?? "http://localhost:8080").replace(/\/+$/, "");
@@ -19,13 +20,6 @@ const API_KEY = process.env.GOMODEL_ADMIN_API_KEY ?? "";
 const HAS_KEY = API_KEY.length > 0;
 const READ_ONLY = ["1", "true"].includes((process.env.GOMODEL_READ_ONLY ?? "").toLowerCase());
 const HTTP_TOKEN = process.env.GOMODEL_HTTP_TOKEN ?? "";
-
-/** Parse a numeric env var; garbage input falls back instead of becoming NaN. */
-function envInt(name: string, fallback: number, min: number, max: number): number {
-  const value = Number.parseInt(process.env[name] ?? "", 10);
-  if (!Number.isFinite(value)) return fallback;
-  return Math.min(Math.max(value, min), max);
-}
 
 const HOST = process.env.HOST ?? "127.0.0.1";
 const PORT = envInt("PORT", 3000, 1, 65535);
