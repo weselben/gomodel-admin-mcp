@@ -81,8 +81,9 @@ sparse and say *why*, not *what*.
 
 The token table is CI-generated: `bun run measure-tokens` rewrites it on
 every release (the bump travels in the release PR), so numbers always
-match the code. **Do not edit that table by hand** — any commit to `main`
-triggers a release cycle that regenerates it per release tag. Run the
+match the code. **Do not edit that table by hand** — a merge to `main` that
+touches a watched code path (see `.github/agents.md`) triggers a release
+cycle that regenerates it per release tag. Run the
 script locally to preview numbers after changing tool descriptions or
 groupings, but never commit manual tweaks to it.
 
