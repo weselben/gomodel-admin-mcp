@@ -120,6 +120,7 @@ Measured from `tools/list` (JSON payload, tokens ≈ bytes / 4):
 | `GOMODEL_CACHE_TTL_SECONDS` | no   | `30`                    | Read-cache TTL                                  |
 | `GOMODEL_DOCS_REPO`     | no       | `ENTERPILOT/GoModel`    | GitHub repo the docs tools read from            |
 | `GOMODEL_DOCS_REF`      | no       | `main`                  | Branch/ref the docs tools read from             |
+| `GOMODEL_DOCS_CACHE_TTL_SECONDS` | no | `1800`           | Docs index/page cache TTL (60–86400); 30 min because GitHub degrades often enough that stale docs beat no docs |
 
 ## Run it
 
