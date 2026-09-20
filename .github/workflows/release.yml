@@ -4,15 +4,12 @@ on:
   push:
     branches: [main]
     paths:
+      # Code only: docs, CI, tests, and spec updates must not cut releases.
       - src/**
       - package.json
       - bun.lock
       - Dockerfile
       - tsconfig.json
-      - README.md
-      - CLAUDE.md
-      - tests/**
-      - .github/**
   # Manual finalize/redo path: dispatches on main, finalizing whatever
   # tag the state implies.
   workflow_dispatch:
