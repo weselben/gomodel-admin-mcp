@@ -34,9 +34,10 @@ describe("truncate", () => {
     }
   });
 
-  test("the truncation marker points at pagination", () => {
+  test("the truncation marker stays generic", () => {
     const cut = truncate("x".repeat(200), 120);
-    expect(cut).toContain("limit/offset");
+    expect(cut).toContain("narrow the query");
+    expect(cut).not.toContain("limit/offset");
   });
 });
 
@@ -46,16 +47,20 @@ describe("resolveMaxBytes", () => {
     expect(resolveMaxBytes(undefined)).toBe(DEFAULT_MAX_BYTES);
   });
 
-  test("garbage input falls back to the default", () => {
-    expect(resolveMaxBytes("abc")).toBe(DEFAULT_MAX_BYTES);
+  test("invalid values fall back to the default", () => {
+    for (const raw of ["abc", "-5", "1.5", "8MB", "1,048,576"]) {
+      expect(resolveMaxBytes(raw)).toBe(DEFAULT_MAX_BYTES);
+    }
   });
 
-  test("clamps into the sane range", () => {
+  test("clamps valid values into the sane range", () => {
     expect(resolveMaxBytes("1")).toBe(1024);
-    expect(resolveMaxBytes("-5")).toBe(1024);
-    expect(resolveMaxBytes("1.5")).toBe(1024);
     expect(resolveMaxBytes("4096")).toBe(4096);
     expect(resolveMaxBytes("999999999")).toBe(8 * 1024 * 1024);
+  });
+
+  test("trims surrounding whitespace", () => {
+    expect(resolveMaxBytes(" 4096 ")).toBe(4096);
   });
 });
 

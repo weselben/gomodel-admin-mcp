@@ -90,11 +90,10 @@ reversible JSON-table encoding rewrites, cutting repeated key names from
 every row of large list responses.
 
 Complete responses are capped at `GOMODEL_MAX_OUTPUT_BYTES` (default 256 KiB)
-before they leave the server; oversized payloads end with a truncation marker
-that points at pagination. Some MCP clients cap tool results far lower and
-cut mid-JSON — set the variable to just under your client's limit so the
-marker (not the client) does the cutting, then page large lists with
-`limit`/`offset` params.
+before they leave the server; oversized payloads end with a truncation marker.
+Some MCP clients cap tool results far lower and cut mid-JSON — set the
+variable to just under your client's limit so the server does the cutting.
+For list endpoints, page with `limit`/`offset` params where supported.
 
 ## Modes and passive token cost
 

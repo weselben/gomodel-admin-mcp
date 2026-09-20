@@ -11,14 +11,17 @@ import { homogenizeJsonWithinLimit } from "./homogenize.js";
 export const DEFAULT_MAX_BYTES = 256 * 1024;
 
 /**
- * Parse `GOMODEL_MAX_OUTPUT_BYTES`; unset or out-of-range values fall back
- * to DEFAULT_MAX_BYTES so a typo can never zero the budget. Lets users on
- * harnesses with smaller tool-result caps get a clean marker (and the
- * pagination hint) instead of a mid-JSON cut from their client.
+ * Parse `GOMODEL_MAX_OUTPUT_BYTES`. Only bare digits are accepted — empty,
+ * negative, decimal, suffixed (`8MB`), or formatted (`1,048,576`) values
+ * fall back to DEFAULT_MAX_BYTES so a typo can never zero the budget.
+ * Valid numbers are clamped to 1024–8 MiB. Lets users on harnesses with
+ * smaller tool-result caps get the clean marker instead of a mid-JSON cut
+ * from their client.
  */
 export function resolveMaxBytes(raw = process.env.GOMODEL_MAX_OUTPUT_BYTES ?? ""): number {
-  const value = Number.parseInt(raw, 10);
-  if (!Number.isFinite(value)) return DEFAULT_MAX_BYTES;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return DEFAULT_MAX_BYTES;
+  const value = Number.parseInt(trimmed, 10);
   return Math.min(Math.max(value, 1024), 8 * 1024 * 1024);
 }
 
@@ -29,10 +32,11 @@ export function truncate(text: string, maxBytes: number = MAX_BYTES): string {
   // JavaScript length fits, and the cut must never split a multibyte
   // character. The marker's own bytes are reserved so prefix + marker stays
   // within the cap; a cap smaller than the marker yields a UTF-8-safe marker
-  // prefix so the guarantee holds for every cap. The hint points agents at
-  // pagination, which is the correct answer to any cap.
+  // prefix so the guarantee holds for every cap. The marker itself stays
+  // generic — pagination advice lives in the README, where there is room
+  // to say which operations actually support limit/offset.
   if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
-  const marker = `\n\n[truncated: response exceeded ${maxBytes} bytes — narrow with limit/offset or filters]`;
+  const marker = `\n\n[truncated: response exceeded ${maxBytes} bytes — narrow the query]`;
   const markerBytes = Buffer.byteLength(marker, "utf8");
   if (markerBytes > maxBytes) return utf8Prefix(marker, maxBytes);
   return `${utf8Prefix(text, maxBytes - markerBytes)}${marker}`;
