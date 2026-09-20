@@ -96,6 +96,26 @@ describe("homogenizeJson", () => {
       '[{"raw_data":{"latency":1e400,"name":"x"}},{"raw_data":{"latency":2.5,"name":"y"}}]';
     expect(homogenizeJson(input)).toBe(input);
   });
+
+  test("passes through decimal-form integers beyond the exact range", () => {
+    const input = '[{"id":9007199254740993.0,"a":1},{"id":9007199254740993.0,"b":2}]';
+    expect(homogenizeJson(input)).toBe(input);
+  });
+
+  test("passes through exponent-form integers beyond the exact range", () => {
+    const input = '[{"id":9007199254740993e0,"a":1},{"id":9007199254740993e0,"b":2}]';
+    expect(homogenizeJson(input)).toBe(input);
+  });
+
+  test("safe decimals and exponent forms still homogenize and minify", () => {
+    const input = '[{"v":1.5,"a":1},{"v":1e3,"b":2}]';
+    expect(homogenizeJson(input)).toBe(
+      JSON.stringify([
+        { a: 1, b: null, v: 1.5 },
+        { a: null, b: 2, v: 1000 },
+      ]),
+    );
+  });
 });
 
 describe("homogenizeJsonWithinLimit", () => {
