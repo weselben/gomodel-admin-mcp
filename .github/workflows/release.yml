@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      # Code only: docs, CI, tests, and spec updates must not cut releases.
+      # Code and tests: docs, CI, and spec updates must not cut releases.
       - src/**
+      - tests/**
       - package.json
       - bun.lock
       - Dockerfile

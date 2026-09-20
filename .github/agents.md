@@ -9,7 +9,7 @@ has already failed in production.
 One workflow: `.github/workflows/release.yml`, fired by pushes to `main`
 that touch a watched path:
 
-`src/**`, `package.json`, `bun.lock`, `Dockerfile`, `tsconfig.json`
+`src/**`, `tests/**`, `package.json`, `bun.lock`, `Dockerfile`, `tsconfig.json`
 
 Steps: build → lint (`oxlint`) → `bun test` → refresh the README token
 table (`bun run measure-tokens`) → compute the next patch tag → then one
@@ -75,9 +75,10 @@ reintroduce one.
 
 ## Watched paths
 
-The `paths:` filter decides what fires releases. **Only code paths trigger
-releases** — docs (`README.md`, `CLAUDE.md`, `spec/**`), CI
-(`.github/**`), and test-only changes (`tests/**`) must not cut versions.
+The `paths:` filter decides what fires releases. **Code and test changes
+trigger releases** — docs (`README.md`, `CLAUDE.md`, `spec/**`) and CI
+(`.github/**`) remain unwatched; big test changes usually accompany code
+and should cut releases too.
 New top-level source files or directories that ship in the release must be
 added to the filter — and to `files` in `package.json` and the Docker
 build context. `spec/**` stays unwatched: a swagger update only warrants
