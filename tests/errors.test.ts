@@ -99,7 +99,7 @@ describe("error handling", () => {
       try {
         const res = await mcp.call("admin_usage", { operation: "get_usage_summary" });
         expect(res.isError).toBe(false);
-        expect(res.text).toContain("[truncated: response exceeded 262144 bytes]");
+        expect(res.text).toContain("[truncated: response exceeded 262144 bytes");
       } finally {
         delete process.env.MOCK_HUGE;
         await mcp.close();
@@ -117,7 +117,7 @@ describe("error handling", () => {
       try {
         const res = await mcp.call("admin_usage", { operation: "get_usage_summary" });
         expect(res.isError).toBe(false);
-        expect(res.text).toContain("[truncated: response exceeded 262144 bytes]");
+        expect(res.text).toContain("[truncated: response exceeded 262144 bytes");
         // No broken multibyte sequences (UTF-8 replacement character).
         expect(res.text.includes("�")).toBe(false);
         const prefix = res.text.slice(0, res.text.indexOf("\n\n[truncated"));

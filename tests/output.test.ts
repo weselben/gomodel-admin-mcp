@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { MAX_BYTES, normalizeOutput, truncate } from "../src/output.js";
+import { DEFAULT_MAX_BYTES, MAX_BYTES, normalizeOutput, resolveMaxBytes, truncate } from "../src/output.js";
 
 describe("truncate", () => {
   test("returns input unchanged when it fits", () => {
@@ -12,11 +12,11 @@ describe("truncate", () => {
     expect(truncate(snowmen, 100)).toBe(snowmen);
     const cut = truncate("☃".repeat(100), 50); // 50 chars but 300 bytes
     expect(Buffer.byteLength(cut, "utf8")).toBeLessThanOrEqual(50);
-    expect(cut).toContain("[truncated: response exceeded 50 bytes]");
+    expect(cut).toContain("[truncated: response exceeded 50 bytes");
   });
 
   test("never splits a multibyte character", () => {
-    const cut = truncate("ab" + "☃".repeat(100), 50);
+    const cut = truncate("ab" + "☃".repeat(100), 120);
     expect(cut.endsWith("�")).toBe(false);
     expect(cut.startsWith("ab")).toBe(true);
   });
@@ -32,6 +32,41 @@ describe("truncate", () => {
       const cut = truncate("x".repeat(100), cap);
       expect(Buffer.byteLength(cut, "utf8")).toBeLessThanOrEqual(cap);
     }
+  });
+
+  test("the truncation marker stays generic", () => {
+    const cut = truncate("x".repeat(200), 120);
+    expect(cut).toContain("narrow the query");
+    expect(cut).not.toContain("limit/offset");
+  });
+});
+
+describe("resolveMaxBytes", () => {
+  test("defaults to 256 KiB when unset", () => {
+    const saved = process.env.GOMODEL_MAX_OUTPUT_BYTES;
+    delete process.env.GOMODEL_MAX_OUTPUT_BYTES;
+    try {
+      expect(resolveMaxBytes("")).toBe(DEFAULT_MAX_BYTES);
+      expect(resolveMaxBytes(undefined)).toBe(DEFAULT_MAX_BYTES);
+    } finally {
+      if (saved !== undefined) process.env.GOMODEL_MAX_OUTPUT_BYTES = saved;
+    }
+  });
+
+  test("invalid values fall back to the default", () => {
+    for (const raw of ["abc", "-5", "1.5", "8MB", "1,048,576"]) {
+      expect(resolveMaxBytes(raw)).toBe(DEFAULT_MAX_BYTES);
+    }
+  });
+
+  test("clamps valid values into the sane range", () => {
+    expect(resolveMaxBytes("1")).toBe(1024);
+    expect(resolveMaxBytes("4096")).toBe(4096);
+    expect(resolveMaxBytes("999999999")).toBe(8 * 1024 * 1024);
+  });
+
+  test("trims surrounding whitespace", () => {
+    expect(resolveMaxBytes(" 4096 ")).toBe(4096);
   });
 });
 

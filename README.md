@@ -89,6 +89,12 @@ gateways with GoModel Pro prompt compression this shape is what the
 reversible JSON-table encoding rewrites, cutting repeated key names from
 every row of large list responses.
 
+Complete responses are capped at `GOMODEL_MAX_OUTPUT_BYTES` (default 256 KiB)
+before they leave the server; oversized payloads end with a truncation marker.
+Some MCP clients cap tool results far lower and cut mid-JSON — set the
+variable to just under your client's limit so the server does the cutting.
+For list endpoints, page with `limit`/`offset` params where supported.
+
 ## Modes and passive token cost
 
 <!-- CI-generated: bun run measure-tokens rewrites the rows below on release. Do not edit them by hand. -->
@@ -118,6 +124,7 @@ Measured from `tools/list` (JSON payload, tokens ≈ bytes / 4):
 | `HOST`                  | no       | `127.0.0.1`             | HTTP bind address (HTTP mode); `0.0.0.0` for containers only |
 | `PORT`                  | no       | `3000`                  | HTTP port (HTTP mode)                           |
 | `GOMODEL_CACHE_TTL_SECONDS` | no   | `30`                    | Read-cache TTL                                  |
+| `GOMODEL_MAX_OUTPUT_BYTES`  | no       | `262144`                | Tool-result byte cap (1024–8 MiB); set below your client's limit |
 | `GOMODEL_DOCS_REPO`     | no       | `ENTERPILOT/GoModel`    | GitHub repo the docs tools read from            |
 | `GOMODEL_DOCS_REF`      | no       | `main`                  | Branch/ref the docs tools read from             |
 | `GOMODEL_DOCS_CACHE_TTL_SECONDS` | no | `1800`           | Docs index/page cache TTL (60–86400); 30 min because GitHub degrades often enough that stale docs beat no docs |
