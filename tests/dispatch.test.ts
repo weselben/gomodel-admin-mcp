@@ -58,19 +58,42 @@ describe("dispatch", () => {
     expect(result.isError).toBe(true);
     expect(result.text).toContain("invalid params for upsert_provider_credential");
     expect(result.text).toContain("api_keys: Expected array, received object");
-    expect(result.text).toContain('Received {"item":');
+    expect(result.text).toContain("Received [redacted]");
+    expect(result.text).not.toContain("sk_gom_TEST");
     expect(result.text).toContain("send the plain JSON array instead");
   });
 
-  test("non-array wrong type shows the received value without the {item} hint", async () => {
+  test("non-array wrong type on a sensitive field redacts the received value", async () => {
     const result = await mcp.call("admin_provider_control", {
       operation: "upsert_provider_credential",
       params: { name: "x", type: "chatgpt", api_keys: "oops" },
     });
     expect(result.isError).toBe(true);
     expect(result.text).toContain("api_keys: Expected array, received string");
-    expect(result.text).toContain('Received "oops"');
+    expect(result.text).toContain("Received [redacted]");
+    expect(result.text).not.toContain("oops");
     expect(result.text).not.toContain("plain JSON array");
+  });
+
+  test("{item:[...]} on a string field gets a plain type error, no array hint", async () => {
+    const result = await mcp.call("admin_governance_control", {
+      operation: "upsert_budget",
+      params: { amount: 1, scope: { item: ["x"] } },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("scope: Expected string, received object");
+    expect(result.text).not.toContain("plain JSON array");
+  });
+
+  test("redaction covers nested index paths like api_keys.1", async () => {
+    const result = await mcp.call("admin_provider_control", {
+      operation: "upsert_provider_credential",
+      params: { name: "x", type: "chatgpt", api_keys: ["ok", 42] },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("api_keys.1: Expected string, received number");
+    expect(result.text).toContain("Received [redacted]");
+    expect(result.text).not.toContain("42");
   });
 
   test("plain array params still validate and dispatch", async () => {

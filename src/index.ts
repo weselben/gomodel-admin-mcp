@@ -215,6 +215,8 @@ function valueAtPath(input: unknown, path: ReadonlyArray<string | number>): unkn
 // Some MCP clients serialize array arguments as {item:[...]} on the wire
 // (observed in the wild). Surfacing the received value plus an explicit hint
 // lets the caller fix the shape in one retry instead of guessing blindly.
+// The hint is gated on the zod-expected type being "array" so a string field
+// receiving {item:[...]} still gets a plain type error.
 function looksLikeItemWrappedArray(value: unknown): value is { item: unknown[] } {
   return (
     typeof value === "object" &&
@@ -232,8 +234,15 @@ function previewReceived(value: unknown): string {
   } catch {
     return String(value);
   }
-  return json.length > RECEIVED_PREVIEW_CHARS ? `${json.slice(0, RECEIVED_PREVIEW_CHARS)}…` : json;
+  if (json.length <= RECEIVED_PREVIEW_CHARS) return json;
+  // Spread by code point so the cut never splits a UTF-16 surrogate pair.
+  return `${[...json].slice(0, RECEIVED_PREVIEW_CHARS).join("")}…`;
 }
+
+// Param fields matching this can carry secrets (API keys, tokens, whole
+// credential-bearing config objects); their values must never be echoed
+// back in an error preview.
+const SENSITIVE_PATH_SEGMENT = /key|secret|token|password|credential|service_account|config/i;
 
 function formatZodError(error: z.ZodError, input: unknown): string {
   return error.issues
@@ -241,8 +250,14 @@ function formatZodError(error: z.ZodError, input: unknown): string {
       let line = `- ${issue.path.join(".") || "(root)"}: ${issue.message}`;
       if (issue.code === "invalid_type") {
         const received = valueAtPath(input, issue.path);
-        line += `. Received ${previewReceived(received)}`;
-        if (looksLikeItemWrappedArray(received)) {
+        // Compute before redacting: a sensitive field wrapped as {item:[...]}
+        // still earns the array hint even though its value stays hidden.
+        const wrapped = looksLikeItemWrappedArray(received);
+        const sensitive = issue.path.some(
+          (segment) => typeof segment === "string" && SENSITIVE_PATH_SEGMENT.test(segment),
+        );
+        line += sensitive ? ". Received [redacted]" : `. Received ${previewReceived(received)}`;
+        if (issue.expected === "array" && wrapped) {
           line +=
             '; some clients serialize array arguments as {"item":[...]} — send the plain JSON array instead';
         }
