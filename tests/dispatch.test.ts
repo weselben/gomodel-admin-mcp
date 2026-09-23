@@ -50,6 +50,37 @@ describe("dispatch", () => {
     expect(result.text).toContain("amount");
   });
 
+  test("array params wrapped as {item:[...]} get a shape hint, not just a type error", async () => {
+    const result = await mcp.call("admin_provider_control", {
+      operation: "upsert_provider_credential",
+      params: { name: "x", type: "chatgpt", api_keys: { item: ["sk_gom_TEST"] } },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("invalid params for upsert_provider_credential");
+    expect(result.text).toContain("api_keys: Expected array, received object");
+    expect(result.text).toContain('Received {"item":');
+    expect(result.text).toContain("send the plain JSON array instead");
+  });
+
+  test("non-array wrong type shows the received value without the {item} hint", async () => {
+    const result = await mcp.call("admin_provider_control", {
+      operation: "upsert_provider_credential",
+      params: { name: "x", type: "chatgpt", api_keys: "oops" },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("api_keys: Expected array, received string");
+    expect(result.text).toContain('Received "oops"');
+    expect(result.text).not.toContain("plain JSON array");
+  });
+
+  test("plain array params still validate and dispatch", async () => {
+    const result = await mcp.call("admin_provider_control", {
+      operation: "upsert_provider_credential",
+      params: { name: "e2e-array-test", type: "chatgpt", api_keys: ["sk_gom_TEST"] },
+    });
+    expect(result.isError).toBe(false);
+  });
+
   test("strict unknown keys rejected", async () => {
     const result = await mcp.call("admin_governance_control", {
       operation: "upsert_budget",
