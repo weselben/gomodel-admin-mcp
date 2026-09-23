@@ -240,9 +240,9 @@ function previewReceived(value: unknown): string {
 }
 
 // Param fields matching this can carry secrets (API keys, tokens, whole
-// credential-bearing config objects); their values must never be echoed
-// back in an error preview.
-const SENSITIVE_PATH_SEGMENT = /key|secret|token|password|credential|service_account|config/i;
+// credential-bearing config objects, per-request auth headers); their
+// values must never be echoed back in an error preview.
+const SENSITIVE_PATH_SEGMENT = /key|secret|token|password|credential|service_account|config|headers/i;
 
 function formatZodError(error: z.ZodError, input: unknown): string {
   return error.issues

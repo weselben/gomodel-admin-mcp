@@ -75,6 +75,21 @@ describe("dispatch", () => {
     expect(result.text).not.toContain("plain JSON array");
   });
 
+  test("wrong-typed value under headers redacts the whole headers object", async () => {
+    const result = await mcp.call("admin_mcp_servers_control", {
+      operation: "upsert_mcp_server",
+      params: {
+        name: "x",
+        url: "http://localhost:1234",
+        headers: { Authorization: ["Bearer sk_test"] },
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("headers.Authorization: Expected string, received array");
+    expect(result.text).toContain("Received [redacted]");
+    expect(result.text).not.toContain("Bearer sk_test");
+  });
+
   test("{item:[...]} on a string field gets a plain type error, no array hint", async () => {
     const result = await mcp.call("admin_governance_control", {
       operation: "upsert_budget",
