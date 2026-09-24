@@ -1263,6 +1263,64 @@
     ]
    }
   },
+  "/admin/media/{id}": {
+   "get": {
+    "description": "Streams the bytes of an audio or image object the audit log\nreferences by media_id, with its content type. Range requests\nare honored so browser players can seek. An object outside the\ncaller's user-path scope is reported as missing.",
+    "produces": [
+     "application/octet-stream"
+    ],
+    "tags": [
+     "admin"
+    ],
+    "summary": "Download a stored media object",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Media object id",
+      "name": "id",
+      "in": "path",
+      "required": true
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "schema": {
+       "type": "file"
+      }
+     },
+     "206": {
+      "description": "Partial Content",
+      "schema": {
+       "type": "file"
+      }
+     },
+     "400": {
+      "description": "Bad Request",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
   "/admin/model-pricing-overrides": {
    "get": {
     "description": "Lists persisted USD pricing overrides. Selectors support global \"/\", provider-wide \"provider/\", model-wide \"model\", and exact \"provider/model\" scopes.",
@@ -1501,6 +1559,65 @@
      },
      "401": {
       "description": "Unauthorized",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/admin/models/metadata": {
+   "get": {
+    "description": "Returns the merged metadata the gateway serves for a model together with each layer it was merged from: the provider's own listing, the model catalog entry and the config.yaml override. A null layer knows nothing about the model. `sources` names the winning layer per field (config, provider, catalog or inferred).",
+    "produces": [
+     "application/json"
+    ],
+    "tags": [
+     "admin"
+    ],
+    "summary": "Show where one model's metadata comes from",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Provider instance name or provider type",
+      "name": "provider",
+      "in": "query",
+      "required": true
+     },
+     {
+      "type": "string",
+      "description": "Raw upstream model ID",
+      "name": "model",
+      "in": "query",
+      "required": true
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "schema": {
+       "$ref": "#/definitions/providers.ModelMetadataLayers"
+      }
+     },
+     "400": {
+      "description": "Bad Request",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "404": {
+      "description": "Not Found",
       "schema": {
        "$ref": "#/definitions/core.GatewayError"
       }
@@ -3757,6 +3874,56 @@
     }
    }
   },
+  "providers.ModelMetadataLayers": {
+   "type": "object",
+   "properties": {
+    "catalog": {
+     "description": "Catalog is the model list (ai-model-list) entry.",
+     "allOf": [
+      {
+       "$ref": "#/definitions/core.ModelMetadata"
+      }
+     ],
+     "x-nullable": true
+    },
+    "config": {
+     "description": "Config is the config.yaml metadata override.",
+     "allOf": [
+      {
+       "$ref": "#/definitions/core.ModelMetadata"
+      }
+     ],
+     "x-nullable": true
+    },
+    "effective": {
+     "description": "Effective is the merged metadata, as listed by /admin/models.",
+     "allOf": [
+      {
+       "$ref": "#/definitions/core.ModelMetadata"
+      }
+     ]
+    },
+    "provider": {
+     "description": "Provider is what the provider reported in its own model listing.",
+     "allOf": [
+      {
+       "$ref": "#/definitions/core.ModelMetadata"
+      }
+     ],
+     "x-nullable": true
+    },
+    "selector": {
+     "type": "string"
+    },
+    "sources": {
+     "description": "Sources names the layer that supplied each effective field\n(see modeldata.MetadataSources).",
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    }
+   }
+  },
   "admin.providerCredentialViewResponse": {
    "type": "object",
    "properties": {
@@ -3800,6 +3967,10 @@
      }
     },
     "name": {
+     "type": "string"
+    },
+    "proxy_url": {
+     "description": "ProxyURL is the provider's outbound proxy with any password masked.",
      "type": "string"
     },
     "service_account_file": {
@@ -3865,6 +4036,10 @@
      }
     },
     "name": {
+     "type": "string"
+    },
+    "proxy_url": {
+     "description": "ProxyURL may be sent back exactly as the view rendered it (password\nmasked) to keep the stored proxy credentials.",
      "type": "string"
     },
     "service_account_file": {
@@ -5127,6 +5302,65 @@
     "CategoryUtility"
    ]
   },
+  "core.ModelMetadata": {
+   "type": "object",
+   "properties": {
+    "capabilities": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "boolean"
+     }
+    },
+    "categories": {
+     "type": "array",
+     "items": {
+      "$ref": "#/definitions/core.ModelCategory"
+     }
+    },
+    "context_window": {
+     "type": "integer"
+    },
+    "description": {
+     "type": "string"
+    },
+    "display_name": {
+     "type": "string"
+    },
+    "family": {
+     "type": "string"
+    },
+    "max_output_tokens": {
+     "type": "integer"
+    },
+    "modes": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "pricing": {
+     "$ref": "#/definitions/core.ModelPricing"
+    },
+    "pricing_sources": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    },
+    "rankings": {
+     "type": "object",
+     "additionalProperties": {
+      "$ref": "#/definitions/core.ModelRanking"
+     }
+    },
+    "tags": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
   "admin.providerCredentialFieldResponse": {
    "type": "object",
    "properties": {
@@ -5668,65 +5902,6 @@
     }
    }
   },
-  "core.ModelMetadata": {
-   "type": "object",
-   "properties": {
-    "capabilities": {
-     "type": "object",
-     "additionalProperties": {
-      "type": "boolean"
-     }
-    },
-    "categories": {
-     "type": "array",
-     "items": {
-      "$ref": "#/definitions/core.ModelCategory"
-     }
-    },
-    "context_window": {
-     "type": "integer"
-    },
-    "description": {
-     "type": "string"
-    },
-    "display_name": {
-     "type": "string"
-    },
-    "family": {
-     "type": "string"
-    },
-    "max_output_tokens": {
-     "type": "integer"
-    },
-    "modes": {
-     "type": "array",
-     "items": {
-      "type": "string"
-     }
-    },
-    "pricing": {
-     "$ref": "#/definitions/core.ModelPricing"
-    },
-    "pricing_sources": {
-     "type": "object",
-     "additionalProperties": {
-      "type": "string"
-     }
-    },
-    "rankings": {
-     "type": "object",
-     "additionalProperties": {
-      "$ref": "#/definitions/core.ModelRanking"
-     }
-    },
-    "tags": {
-     "type": "array",
-     "items": {
-      "type": "string"
-     }
-    }
-   }
-  },
   "core.ModelPricing": {
    "type": "object",
    "properties": {
@@ -5818,6 +5993,9 @@
   "core.ModelPricingTier": {
    "type": "object",
    "properties": {
+    "cached_input_per_mtok": {
+     "type": "number"
+    },
     "input_per_mtok": {
      "type": "number"
     },
