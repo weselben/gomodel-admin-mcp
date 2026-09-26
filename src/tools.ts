@@ -164,7 +164,7 @@ export const ADMIN_TOOLS: AdminTool[] = [
     name: "get_media",
     path: "/media/{id}",
     description:
-      "Download a stored media object (audio/image) referenced by the audit log. Returns content type, byte size, and the bytes base64-encoded; large objects are truncated at the output byte cap.",
+      "Download a stored media object (audio/image) referenced by the audit log. Returns content type, byte size, and the bytes base64-encoded; oversized objects are bounded to the output byte cap with truncated: true.",
   },
   {
     name: "get_provider_status",

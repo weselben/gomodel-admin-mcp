@@ -121,11 +121,18 @@ async function adminGet(tool: AdminTool, args: Record<string, unknown>, bypass: 
 /**
  * Fetch a stored media object (GET /admin/media/{id}). The gateway streams
  * raw bytes, so the result is wrapped into plain JSON — content type, byte
- * size, base64 payload — keeping the emitted-bytes-stay-JSON invariant and
- * letting the byte cap truncate oversized objects cleanly. Cached like any
+ * size, base64 payload — keeping the emitted-bytes-stay-JSON invariant.
+ * The download is bounded while reading: base64 grows bytes by 4/3, so the
+ * raw-byte budget reserves envelope overhead up front. Oversized objects
+ * are cut at the budget with `truncated: true`, keeping the result valid
+ * JSON instead of emitting a marker-appended fragment. Cached like any
  * other read: media objects are immutable.
  */
-async function fetchMedia(tool: AdminTool, args: Record<string, unknown>, bypass: boolean): Promise<string> {
+async function fetchMedia(
+  tool: AdminTool,
+  args: Record<string, unknown>,
+  bypass: boolean,
+): Promise<string> {
   const url = buildUrl(tool, args);
   if (!bypass) {
     const cached = cacheGet(url);
@@ -139,12 +146,41 @@ async function fetchMedia(tool: AdminTool, args: Record<string, unknown>, bypass
     const body = await res.text().catch(() => "");
     throw new Error(`admin API ${res.status} ${res.statusText}: ${body.slice(0, 2000)}`);
   }
-  const bytes = Buffer.from(await res.arrayBuffer());
+  if (!res.body) {
+    throw new Error("admin API returned an empty media response");
+  }
+  // Raw-byte budget: base64 length is ceil(n/3)*4, so cap n at 3/4 of the
+  // output cap minus slack for the JSON envelope itself.
+  const maxRawBytes = Math.floor((MAX_BYTES - 512) * (3 / 4));
+  const reader = res.body.getReader();
+  const chunks: Buffer[] = [];
+  let received = 0;
+  let truncated = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = maxRawBytes - received;
+      if (value.byteLength > remaining) {
+        chunks.push(Buffer.from(value.subarray(0, remaining)));
+        received = maxRawBytes;
+        truncated = true;
+        break;
+      }
+      chunks.push(Buffer.from(value));
+      received += value.byteLength;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  const contentLength = Number(res.headers.get("content-length"));
+  const sizeBytes = Number.isFinite(contentLength) && contentLength > 0 ? contentLength : received;
   const text = normalizeOutput(
     JSON.stringify({
       content_type: res.headers.get("content-type") ?? "application/octet-stream",
-      size_bytes: bytes.length,
-      base64: bytes.toString("base64"),
+      size_bytes: sizeBytes,
+      truncated,
+      base64: Buffer.concat(chunks, received).toString("base64"),
     }),
   );
   cacheSet(url, text);
