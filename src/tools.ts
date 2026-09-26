@@ -161,6 +161,12 @@ export const ADMIN_TOOLS: AdminTool[] = [
     ],
   },
   {
+    name: "get_media",
+    path: "/media/{id}",
+    description:
+      "Download a stored media object (audio/image) referenced by the audit log. Returns content type, byte size, and the bytes base64-encoded; large objects are truncated at the output byte cap.",
+  },
+  {
     name: "get_provider_status",
     path: "/providers/status",
     description: "Get health status and configuration summary for every configured provider.",
@@ -205,6 +211,16 @@ export const ADMIN_TOOLS: AdminTool[] = [
     name: "list_model_categories",
     path: "/models/categories",
     description: "List model categories with model counts.",
+  },
+  {
+    name: "get_model_metadata",
+    path: "/models/metadata",
+    description:
+      "Show where one model's metadata comes from: the merged metadata plus each layer (provider listing, catalog entry, config override) and the winning source per field.",
+    query: [
+      { name: "provider", description: "Provider instance name or provider type", required: true },
+      { name: "model", description: "Raw upstream model id", required: true },
+    ],
   },
   {
     name: "list_virtual_models",

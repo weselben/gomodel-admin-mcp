@@ -153,4 +153,36 @@ describe("dispatch", () => {
     expect(result.isError).toBe(false);
     JSON.parse(result.text);
   });
+
+  test("get_media returns content type, size, and base64 bytes as JSON", async () => {
+    const result = await mcp.call("admin_audit", {
+      operation: "get_media",
+      params: { id: "demo" },
+    });
+    expect(result.isError).toBe(false);
+    const parsed = JSON.parse(result.text);
+    expect(typeof parsed.content_type).toBe("string");
+    expect(typeof parsed.size_bytes).toBe("number");
+    expect(typeof parsed.base64).toBe("string");
+    expect(Buffer.from(parsed.base64, "base64").length).toBe(parsed.size_bytes);
+  });
+
+  test("get_model_metadata requires provider and model", async () => {
+    const result = await mcp.call("admin_models", {
+      operation: "get_model_metadata",
+      params: {},
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("provider");
+    expect(result.text).toContain("model");
+  });
+
+  test("get_model_metadata with provider and model returns JSON", async () => {
+    const result = await mcp.call("admin_models", {
+      operation: "get_model_metadata",
+      params: { provider: "demo", model: "demo" },
+    });
+    expect(result.isError).toBe(false);
+    JSON.parse(result.text);
+  });
 });

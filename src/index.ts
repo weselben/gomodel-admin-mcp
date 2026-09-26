@@ -118,6 +118,39 @@ async function adminGet(tool: AdminTool, args: Record<string, unknown>, bypass: 
   return text;
 }
 
+/**
+ * Fetch a stored media object (GET /admin/media/{id}). The gateway streams
+ * raw bytes, so the result is wrapped into plain JSON — content type, byte
+ * size, base64 payload — keeping the emitted-bytes-stay-JSON invariant and
+ * letting the byte cap truncate oversized objects cleanly. Cached like any
+ * other read: media objects are immutable.
+ */
+async function fetchMedia(tool: AdminTool, args: Record<string, unknown>, bypass: boolean): Promise<string> {
+  const url = buildUrl(tool, args);
+  if (!bypass) {
+    const cached = cacheGet(url);
+    if (cached !== undefined) return `${cached}\n\n[cache hit: ${CACHE_TTL_SECONDS}s TTL]`;
+  }
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${API_KEY}`, Accept: "application/octet-stream" },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`admin API ${res.status} ${res.statusText}: ${body.slice(0, 2000)}`);
+  }
+  const bytes = Buffer.from(await res.arrayBuffer());
+  const text = normalizeOutput(
+    JSON.stringify({
+      content_type: res.headers.get("content-type") ?? "application/octet-stream",
+      size_bytes: bytes.length,
+      base64: bytes.toString("base64"),
+    }),
+  );
+  cacheSet(url, text);
+  return text;
+}
+
 /** Collect SSE events from /admin/live/logs for a bounded window. */
 async function collectLiveLogs(args: Record<string, unknown>): Promise<string> {
   const raw = Number.parseInt(String(args.seconds ?? "5"), 10);
@@ -369,11 +402,14 @@ function buildServer(): McpServer {
           const result = dispatchGroup(group, args as Record<string, unknown>);
           if (result.kind === "error") return errorResult(result.text);
           if (result.kind === "text") return textResult(result.text);
+          const toolName = (result.tool as AdminTool).name;
           const text =
             group.kind === "read"
-              ? (result.tool as AdminTool).name === "get_live_logs"
+              ? toolName === "get_live_logs"
                 ? await collectLiveLogs(result.args)
-                : await adminGet(result.tool as AdminTool, result.args, result.bypass)
+                : toolName === "get_media"
+                  ? await fetchMedia(result.tool as AdminTool, result.args, result.bypass)
+                  : await adminGet(result.tool as AdminTool, result.args, result.bypass)
               : await adminWrite(result.tool as WriteTool, result.args);
           return textResult(text);
         } catch (error) {
