@@ -6,8 +6,14 @@ has already failed in production.
 
 ## What runs, when
 
-One workflow: `.github/workflows/release.yml`, fired by pushes to `main`
-that touch a watched path:
+Two workflows:
+
+- `.github/workflows/ci.yml` — fired by pull requests targeting `main`.
+  Read-only gate: build → lint (`oxlint`) → `bun test`. Nothing here
+  pushes, tags, or releases; it exists so broken code is caught at PR
+  review time, not after merge.
+- `.github/workflows/release.yml` — fired by pushes to `main`
+  that touch a watched path:
 
 `src/**`, `tests/**`, `package.json`, `bun.lock`, `Dockerfile`, `tsconfig.json`
 

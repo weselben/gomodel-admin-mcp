@@ -201,9 +201,69 @@ function operationListing(group: ToolGroup): string {
   return `Operations of admin_${group.name}:\n${lines.join("\n")}`;
 }
 
-function formatZodError(error: z.ZodError): string {
+const RECEIVED_PREVIEW_CHARS = 200;
+
+function valueAtPath(input: unknown, path: ReadonlyArray<string | number>): unknown {
+  let value = input;
+  for (const key of path) {
+    if (value === null || typeof value !== "object") return undefined;
+    value = (value as Record<string, unknown>)[key];
+  }
+  return value;
+}
+
+// Some MCP clients serialize array arguments as {item:[...]} on the wire
+// (observed in the wild). Surfacing the received value plus an explicit hint
+// lets the caller fix the shape in one retry instead of guessing blindly.
+// The hint is gated on the zod-expected type being "array" so a string field
+// receiving {item:[...]} still gets a plain type error.
+function looksLikeItemWrappedArray(value: unknown): value is { item: unknown[] } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    Array.isArray((value as Record<string, unknown>).item)
+  );
+}
+
+function previewReceived(value: unknown): string {
+  let json: string;
+  try {
+    json = JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+  if (json.length <= RECEIVED_PREVIEW_CHARS) return json;
+  // Spread by code point so the cut never splits a UTF-16 surrogate pair.
+  return `${[...json].slice(0, RECEIVED_PREVIEW_CHARS).join("")}…`;
+}
+
+// Param fields matching this can carry secrets (API keys, tokens, whole
+// credential-bearing config objects, per-request auth headers); their
+// values must never be echoed back in an error preview.
+const SENSITIVE_PATH_SEGMENT = /key|secret|token|password|credential|service_account|config|headers/i;
+
+function formatZodError(error: z.ZodError, input: unknown): string {
   return error.issues
-    .map((issue) => `- ${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .map((issue) => {
+      let line = `- ${issue.path.join(".") || "(root)"}: ${issue.message}`;
+      if (issue.code === "invalid_type") {
+        const received = valueAtPath(input, issue.path);
+        // Compute before redacting: a sensitive field wrapped as {item:[...]}
+        // still earns the array hint even though its value stays hidden.
+        const wrapped = looksLikeItemWrappedArray(received);
+        const sensitive = issue.path.some(
+          (segment) => typeof segment === "string" && SENSITIVE_PATH_SEGMENT.test(segment),
+        );
+        line += sensitive ? ". Received [redacted]" : `. Received ${previewReceived(received)}`;
+        if (issue.expected === "array" && wrapped) {
+          line +=
+            '; some clients serialize array arguments as {"item":[...]} — send the plain JSON array instead';
+        }
+      }
+      return line;
+    })
     .join("\n");
 }
 
@@ -256,7 +316,7 @@ function dispatchGroup(group: ToolGroup, args: Record<string, unknown>): Dispatc
   if (!parsed.success) {
     return {
       kind: "error",
-      text: `invalid params for ${operation}:\n${formatZodError(parsed.error)}\n\nCall admin_${group.name} again with corrected params; omit "operation" to re-list this area's operations.`,
+      text: `invalid params for ${operation}:\n${formatZodError(parsed.error, params)}\n\nCall admin_${group.name} again with corrected params; omit "operation" to re-list this area's operations.`,
     };
   }
   return { kind: "run", tool, args: parsed.data as Record<string, unknown>, bypass };

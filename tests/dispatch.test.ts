@@ -50,6 +50,75 @@ describe("dispatch", () => {
     expect(result.text).toContain("amount");
   });
 
+  test("array params wrapped as {item:[...]} get a shape hint, not just a type error", async () => {
+    const result = await mcp.call("admin_provider_control", {
+      operation: "upsert_provider_credential",
+      params: { name: "x", type: "chatgpt", api_keys: { item: ["sk_gom_TEST"] } },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("invalid params for upsert_provider_credential");
+    expect(result.text).toContain("api_keys: Expected array, received object");
+    expect(result.text).toContain("Received [redacted]");
+    expect(result.text).not.toContain("sk_gom_TEST");
+    expect(result.text).toContain("send the plain JSON array instead");
+  });
+
+  test("non-array wrong type on a sensitive field redacts the received value", async () => {
+    const result = await mcp.call("admin_provider_control", {
+      operation: "upsert_provider_credential",
+      params: { name: "x", type: "chatgpt", api_keys: "oops" },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("api_keys: Expected array, received string");
+    expect(result.text).toContain("Received [redacted]");
+    expect(result.text).not.toContain("oops");
+    expect(result.text).not.toContain("plain JSON array");
+  });
+
+  test("wrong-typed value under headers redacts the whole headers object", async () => {
+    const result = await mcp.call("admin_mcp_servers_control", {
+      operation: "upsert_mcp_server",
+      params: {
+        name: "x",
+        url: "http://localhost:1234",
+        headers: { Authorization: ["Bearer sk_test"] },
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("headers.Authorization: Expected string, received array");
+    expect(result.text).toContain("Received [redacted]");
+    expect(result.text).not.toContain("Bearer sk_test");
+  });
+
+  test("{item:[...]} on a string field gets a plain type error, no array hint", async () => {
+    const result = await mcp.call("admin_governance_control", {
+      operation: "upsert_budget",
+      params: { amount: 1, scope: { item: ["x"] } },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("scope: Expected string, received object");
+    expect(result.text).not.toContain("plain JSON array");
+  });
+
+  test("redaction covers nested index paths like api_keys.1", async () => {
+    const result = await mcp.call("admin_provider_control", {
+      operation: "upsert_provider_credential",
+      params: { name: "x", type: "chatgpt", api_keys: ["ok", 42] },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("api_keys.1: Expected string, received number");
+    expect(result.text).toContain("Received [redacted]");
+    expect(result.text).not.toContain("42");
+  });
+
+  test("plain array params still validate and dispatch", async () => {
+    const result = await mcp.call("admin_provider_control", {
+      operation: "upsert_provider_credential",
+      params: { name: "e2e-array-test", type: "chatgpt", api_keys: ["sk_gom_TEST"] },
+    });
+    expect(result.isError).toBe(false);
+  });
+
   test("strict unknown keys rejected", async () => {
     const result = await mcp.call("admin_governance_control", {
       operation: "upsert_budget",
