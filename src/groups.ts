@@ -56,6 +56,7 @@ export const READ_GROUPS: ToolGroup[] = [
       ["get_audit_detail", "full detail of one entry"],
       ["get_audit_conversation", "thread around one entry"],
       ["get_live_logs", "SSE live events, bounded window"],
+      ["get_media", "download a stored media object by id"],
     ]),
     kind: "read",
   },
@@ -70,6 +71,7 @@ export const READ_GROUPS: ToolGroup[] = [
     description: "Model registry, categories, virtual models, pricing overrides.",
     operations: ops([
       ["list_models", "all registered models with provider info"],
+      ["get_model_metadata", "metadata layers + winning source per field"],
       ["list_model_categories", "categories with model counts"],
       ["list_virtual_models", "redirects and access policies"],
       ["list_model_pricing_overrides", "pricing overrides"],

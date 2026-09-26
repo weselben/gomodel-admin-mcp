@@ -118,6 +118,75 @@ async function adminGet(tool: AdminTool, args: Record<string, unknown>, bypass: 
   return text;
 }
 
+/**
+ * Fetch a stored media object (GET /admin/media/{id}). The gateway streams
+ * raw bytes, so the result is wrapped into plain JSON — content type, byte
+ * size, base64 payload — keeping the emitted-bytes-stay-JSON invariant.
+ * The download is bounded while reading: base64 grows bytes by 4/3, so the
+ * raw-byte budget reserves envelope overhead up front. Oversized objects
+ * are cut at the budget with `truncated: true`, keeping the result valid
+ * JSON instead of emitting a marker-appended fragment. Cached like any
+ * other read: media objects are immutable.
+ */
+async function fetchMedia(
+  tool: AdminTool,
+  args: Record<string, unknown>,
+  bypass: boolean,
+): Promise<string> {
+  const url = buildUrl(tool, args);
+  if (!bypass) {
+    const cached = cacheGet(url);
+    if (cached !== undefined) return `${cached}\n\n[cache hit: ${CACHE_TTL_SECONDS}s TTL]`;
+  }
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${API_KEY}`, Accept: "application/octet-stream" },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`admin API ${res.status} ${res.statusText}: ${body.slice(0, 2000)}`);
+  }
+  if (!res.body) {
+    throw new Error("admin API returned an empty media response");
+  }
+  // Raw-byte budget: base64 length is ceil(n/3)*4, so cap n at 3/4 of the
+  // output cap minus slack for the JSON envelope itself.
+  const maxRawBytes = Math.floor((MAX_BYTES - 512) * (3 / 4));
+  const reader = res.body.getReader();
+  const chunks: Buffer[] = [];
+  let received = 0;
+  let truncated = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = maxRawBytes - received;
+      if (value.byteLength > remaining) {
+        chunks.push(Buffer.from(value.subarray(0, remaining)));
+        received = maxRawBytes;
+        truncated = true;
+        break;
+      }
+      chunks.push(Buffer.from(value));
+      received += value.byteLength;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  const contentLength = Number(res.headers.get("content-length"));
+  const sizeBytes = Number.isFinite(contentLength) && contentLength > 0 ? contentLength : received;
+  const text = normalizeOutput(
+    JSON.stringify({
+      content_type: res.headers.get("content-type") ?? "application/octet-stream",
+      size_bytes: sizeBytes,
+      truncated,
+      base64: Buffer.concat(chunks, received).toString("base64"),
+    }),
+  );
+  cacheSet(url, text);
+  return text;
+}
+
 /** Collect SSE events from /admin/live/logs for a bounded window. */
 async function collectLiveLogs(args: Record<string, unknown>): Promise<string> {
   const raw = Number.parseInt(String(args.seconds ?? "5"), 10);
@@ -369,11 +438,14 @@ function buildServer(): McpServer {
           const result = dispatchGroup(group, args as Record<string, unknown>);
           if (result.kind === "error") return errorResult(result.text);
           if (result.kind === "text") return textResult(result.text);
+          const toolName = (result.tool as AdminTool).name;
           const text =
             group.kind === "read"
-              ? (result.tool as AdminTool).name === "get_live_logs"
+              ? toolName === "get_live_logs"
                 ? await collectLiveLogs(result.args)
-                : await adminGet(result.tool as AdminTool, result.args, result.bypass)
+                : toolName === "get_media"
+                  ? await fetchMedia(result.tool as AdminTool, result.args, result.bypass)
+                  : await adminGet(result.tool as AdminTool, result.args, result.bypass)
               : await adminWrite(result.tool as WriteTool, result.args);
           return textResult(text);
         } catch (error) {
