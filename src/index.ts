@@ -126,7 +126,9 @@ async function adminGet(tool: AdminTool, args: Record<string, unknown>, bypass: 
  * raw-byte budget reserves envelope overhead up front. Oversized objects
  * are cut at the budget with `truncated: true`, keeping the result valid
  * JSON instead of emitting a marker-appended fragment. Cached like any
- * other read: media objects are immutable.
+ * other read: media objects are immutable. Unlike adminGet, cache hits
+ * return the envelope unchanged (no "[cache hit]" suffix) so the promise
+ * of a parseable JSON payload holds on every response.
  */
 async function fetchMedia(
   tool: AdminTool,
@@ -136,7 +138,7 @@ async function fetchMedia(
   const url = buildUrl(tool, args);
   if (!bypass) {
     const cached = cacheGet(url);
-    if (cached !== undefined) return `${cached}\n\n[cache hit: ${CACHE_TTL_SECONDS}s TTL]`;
+    if (cached !== undefined) return cached;
   }
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${API_KEY}`, Accept: "application/octet-stream" },
@@ -174,7 +176,15 @@ async function fetchMedia(
     await reader.cancel().catch(() => {});
   }
   const contentLength = Number(res.headers.get("content-length"));
-  const sizeBytes = Number.isFinite(contentLength) && contentLength > 0 ? contentLength : received;
+  // Known size comes from Content-Length; when the stream was cut at the
+  // budget, `received` is only the retained prefix, so the true size is
+  // unknown (null) unless the gateway declared it.
+  const sizeBytes =
+    Number.isFinite(contentLength) && contentLength > 0
+      ? contentLength
+      : truncated
+        ? null
+        : received;
   const text = normalizeOutput(
     JSON.stringify({
       content_type: res.headers.get("content-type") ?? "application/octet-stream",
