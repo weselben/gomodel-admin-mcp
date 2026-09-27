@@ -278,6 +278,8 @@ export function createMockServer() {
   const routes = buildRoutes();
   /** @type {Map<string, number>} keyed by "METHOD /admin/path" (template-resolved) */
   const requests = new Map();
+  /** @type {string[]} every request line "METHOD /path?query", in arrival order */
+  const requestUrls = [];
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://mock");
@@ -286,6 +288,7 @@ export function createMockServer() {
 
     const key = `${method} ${pathname}`;
     requests.set(key, (requests.get(key) ?? 0) + 1);
+    requestUrls.push(`${method} ${url.pathname}${url.search}`);
 
     const send = (status, body, headers = {}) => {
       res.writeHead(status, { "content-type": "application/json", ...headers });
@@ -397,6 +400,7 @@ export function createMockServer() {
     server,
     routes,
     requests,
+    requestUrls,
     /** Listen on an ephemeral port; resolves to the base URL. */
     listen() {
       return new Promise((resolve) => {

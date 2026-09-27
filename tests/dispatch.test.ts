@@ -180,9 +180,14 @@ describe("dispatch", () => {
   test("get_model_metadata with provider and model returns JSON", async () => {
     const result = await mcp.call("admin_models", {
       operation: "get_model_metadata",
-      params: { provider: "demo", model: "demo" },
+      params: { provider: "demo-provider", model: "demo-model" },
     });
     expect(result.isError).toBe(false);
     JSON.parse(result.text);
+    // The mock only checks non-empty values, so verify the actual query sent
+    // to the gateway — swapped provider/model must not pass.
+    const sent = mock.requestUrls.find((line) => line.startsWith("GET /admin/models/metadata"));
+    expect(sent).toContain("provider=demo-provider");
+    expect(sent).toContain("model=demo-model");
   });
 });
