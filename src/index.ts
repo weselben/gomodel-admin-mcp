@@ -81,6 +81,12 @@ function buildUrl(tool: AdminTool, args: Record<string, unknown>): string {
     if (typeof value !== "string" || value.length === 0) {
       throw new Error(`missing path parameter: ${match[1]}`);
     }
+    // encodeURIComponent leaves "." and ".." intact, and the URL
+    // constructor would normalize them away, silently hitting the wrong
+    // endpoint — reject dot segments up front.
+    if (value === "." || value === "..") {
+      throw new Error(`invalid path parameter: ${match[1]}`);
+    }
     path = path.replace(`{${match[1]}}`, encodeURIComponent(value));
   }
   const url = new URL(`${BASE_URL}/admin${path}`);
@@ -235,6 +241,11 @@ function buildUrlFromPath(path: string, args: Record<string, unknown>): string {
     const value = args[key];
     if (typeof value !== "string" || value.length === 0) {
       throw new Error(`missing path parameter: ${key}`);
+    }
+    // Same dot-segment hazard as buildUrl: normalizeable "." or ".." must
+    // never reach the URL constructor.
+    if (value === "." || value === "..") {
+      throw new Error(`invalid path parameter: ${key}`);
     }
     return encodeURIComponent(value);
   });

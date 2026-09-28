@@ -167,6 +167,18 @@ describe("dispatch", () => {
     expect(Buffer.from(parsed.base64, "base64").length).toBe(parsed.size_bytes);
   });
 
+  test("get_media rejects dot-segment ids instead of hitting the wrong endpoint", async () => {
+    const result = await mcp.call("admin_audit", {
+      operation: "get_media",
+      params: { id: ".." },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("invalid path parameter");
+    // The normalized URL would have hit /admin (404), never the media route.
+    expect(mock.requests.has("GET /admin")).toBe(false);
+    expect(mock.requests.has("GET /admin/media/..")).toBe(false);
+  });
+
   test("get_model_metadata requires provider and model", async () => {
     const result = await mcp.call("admin_models", {
       operation: "get_model_metadata",
