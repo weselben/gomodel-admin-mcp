@@ -1168,7 +1168,7 @@
   },
   "/admin/mcp-servers/{name}/catalog": {
    "get": {
-    "description": "Lists the tools, prompts, resources, and resource templates the named server currently exposes through the gateway, after operator tool filters. Names are the upstream originals; the aggregated /mcp endpoint prefixes them with the server slug.",
+    "description": "Lists the tools, prompts, resources, and resource templates the named server currently exposes through the gateway, after operator tool filters. Discovered tools the filters hide are listed separately under excluded_tools. Names are the upstream originals; the aggregated /mcp endpoint prefixes them with the server slug.",
     "produces": [
      "application/json"
     ],
@@ -1257,6 +1257,46 @@
      },
      "404": {
       "description": "Not Found",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/admin/mcp-virtual-servers": {
+   "get": {
+    "description": "Each virtual server serves a subset of the MCP servers at /mcp/{name}. missing_servers lists members no server matches; conflict explains why a virtual server is not served.",
+    "produces": [
+     "application/json"
+    ],
+    "tags": [
+     "admin"
+    ],
+    "summary": "List virtual MCP servers (config-declared, read-only)",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "schema": {
+       "type": "array",
+       "items": {
+        "$ref": "#/definitions/admin.mcpVirtualServerResponse"
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
       "schema": {
        "$ref": "#/definitions/core.GatewayError"
       }
@@ -3669,8 +3709,17 @@
       "type": "string"
      }
     },
+    "disallowed_user_paths": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
     "enabled": {
      "type": "boolean"
+    },
+    "excluded_tool_count": {
+     "type": "integer"
     },
     "headers": {
      "type": "object",
@@ -3737,6 +3786,12 @@
       "type": "string"
      }
     },
+    "disallowed_user_paths": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
     "enabled": {
      "type": "boolean"
     },
@@ -3772,6 +3827,12 @@
   "mcpgateway.CatalogView": {
    "type": "object",
    "properties": {
+    "excluded_tools": {
+     "type": "array",
+     "items": {
+      "$ref": "#/definitions/mcpgateway.CatalogFeature"
+     }
+    },
     "instructions": {
      "type": "string"
     },
@@ -3804,6 +3865,35 @@
      "items": {
       "$ref": "#/definitions/mcpgateway.CatalogFeature"
      }
+    }
+   }
+  },
+  "admin.mcpVirtualServerResponse": {
+   "type": "object",
+   "properties": {
+    "conflict": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "missing_servers": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "name": {
+     "type": "string"
+    },
+    "servers": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "tool_discovery": {
+     "type": "string"
     }
    }
   },
@@ -4215,6 +4305,10 @@
      "type": "string"
     },
     "MCP_ENABLED": {
+     "type": "string"
+    },
+    "MCP_TOOL_DISCOVERY": {
+     "description": "MCPToolDiscovery is the gateway's default MCP tool discovery mode\n(\"off\" or \"search\"), so the dashboard can show how clients see tools.",
      "type": "string"
     },
     "PER_CHILD_QUOTAS_ENABLED": {
@@ -5120,8 +5214,14 @@
     "description": {
      "type": "string"
     },
+    "destructive": {
+     "type": "boolean"
+    },
     "name": {
      "type": "string"
+    },
+    "read_only": {
+     "type": "boolean"
     }
    }
   },
