@@ -104,8 +104,8 @@ Measured from `tools/list` (JSON payload, tokens ≈ bytes / 4):
 
 | Mode | Tools | Schema bytes | ~tokens |
 | ------------------------- | ----: | -----------: | ------: |
-| Full (default, key set) | 23 | 20,731 | ~5.2k |
-| `GOMODEL_READ_ONLY=1` | 13 | 11,488 | ~2.9k |
+| Full (default, key set) | 23 | 20,832 | ~5.2k |
+| `GOMODEL_READ_ONLY=1` | 13 | 11,589 | ~2.9k |
 | Docs-only (no admin key) | 4 | 2,579 | ~645 |
 
 | Mode | Condition | What registers |
