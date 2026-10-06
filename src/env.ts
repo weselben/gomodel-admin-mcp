@@ -9,3 +9,5 @@ export function parseIntInRange(raw: string, fallback: number, min: number, max:
 export function envInt(name: string, fallback: number, min: number, max: number): number {
   return parseIntInRange(process.env[name] ?? "", fallback, min, max);
 }
+
+// CI-label test: this comment exercises the pr-size and label-prs workflows.
