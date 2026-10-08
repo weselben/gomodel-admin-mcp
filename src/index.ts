@@ -13,12 +13,26 @@ import { EXTRA_WRITE_TOOLS } from "./extra-write-tools.js";
 import { registerDocsTools } from "./docs.js";
 import { MAX_BYTES, normalizeOutput, truncate } from "./output.js";
 import { envInt } from "./env.js";
-import { READ_GROUPS, WRITE_GROUPS, resolveOperation, type ToolGroup } from "./groups.js";
+import {
+  READ_GROUPS,
+  WRITE_GROUPS,
+  resolveOperation,
+  operationListing,
+  type ToolGroup,
+} from "./groups.js";
+import {
+  PLAYGROUND_GROUP,
+  playgroundDispatch,
+  runPlaygroundOp,
+} from "./playground.js";
 
 const BASE_URL = (process.env.GOMODEL_BASE_URL ?? "http://localhost:8080").replace(/\/+$/, "");
 const API_KEY = process.env.GOMODEL_ADMIN_API_KEY ?? "";
 const HAS_KEY = API_KEY.length > 0;
 const READ_ONLY = ["1", "true"].includes((process.env.GOMODEL_READ_ONLY ?? "").toLowerCase());
+const PLAYGROUND_ENABLED = ["1", "true"].includes(
+  (process.env.GOMODEL_PLAYGROUND ?? "").toLowerCase(),
+);
 const HTTP_TOKEN = process.env.GOMODEL_HTTP_TOKEN ?? "";
 
 const HOST = process.env.HOST ?? "127.0.0.1";
@@ -286,11 +300,6 @@ async function adminWrite(tool: WriteTool, args: Record<string, unknown>): Promi
 /* Group tools: gradual discovery, harness-agnostic.                   */
 /* ------------------------------------------------------------------ */
 
-function operationListing(group: ToolGroup): string {
-  const lines = Object.entries(group.operations).map(([op, hint]) => `- ${op}: ${hint}`);
-  return `Operations of admin_${group.name}:\n${lines.join("\n")}`;
-}
-
 const RECEIVED_PREVIEW_CHARS = 200;
 
 function valueAtPath(input: unknown, path: ReadonlyArray<string | number>): unknown {
@@ -424,18 +433,24 @@ function errorResult(text: string) {
 /* Server                                                              */
 /* ------------------------------------------------------------------ */
 
+const REGISTERED_READ_GROUPS = HAS_KEY ? READ_GROUPS : [];
+const REGISTERED_WRITE_GROUPS = HAS_KEY && !READ_ONLY ? WRITE_GROUPS : [];
+// Playground: opt-in via GOMODEL_PLAYGROUND=1 (default OFF), needs an admin
+// key. `send` additionally respects GOMODEL_READ_ONLY at call time, so the
+// read-only server can still inspect model/user-path context.
+const REGISTERED_PLAYGROUND_GROUP =
+  HAS_KEY && PLAYGROUND_ENABLED ? PLAYGROUND_GROUP : undefined;
+
 const INSTRUCTIONS = [
   "GoModel admin API, grouped by area. Call pattern: admin_<area>(operation, params).",
   "Areas: " +
     [...READ_GROUPS, ...WRITE_GROUPS].map((g) => `admin_${g.name}`).join(", ") +
-    " (write areas only appear when writes are enabled).",
+    " (write areas only appear when writes are enabled)." +
+    (REGISTERED_PLAYGROUND_GROUP ? " admin_playground tests models via the public API." : ""),
   "Gradual discovery: omit operation to list an area's operations; an unknown operation errors with the valid list; invalid params return field-level errors. Correct and retry — discovery costs one failed call at most.",
   "Reads are cached for " + CACHE_TTL_SECONDS + "s; pass params.cache_bypass=true to skip the cache for one call.",
   "Docs live in GitHub: docs_index lists pages, docs_search greps contents, docs_get fetches one page.",
 ].join("\n");
-
-const REGISTERED_READ_GROUPS = HAS_KEY ? READ_GROUPS : [];
-const REGISTERED_WRITE_GROUPS = HAS_KEY && !READ_ONLY ? WRITE_GROUPS : [];
 
 /** Build a fully registered server. Called per request in HTTP mode
  *  (stateless transport), once at startup in stdio mode. */
@@ -477,6 +492,42 @@ function buildServer(): McpServer {
     );
   }
 
+  if (REGISTERED_PLAYGROUND_GROUP) {
+    const group = REGISTERED_PLAYGROUND_GROUP;
+    server.registerTool(
+      `admin_${group.name}`,
+      {
+        description: `${group.description} Operations: ${Object.entries(group.operations)
+          .map(([op, hint]) => `${op} (${hint})`)
+          .join("; ")}.`,
+        inputSchema: groupSchema(group),
+      },
+      async (args) => {
+        try {
+          const result = playgroundDispatch(args as Record<string, unknown>);
+          if (result.kind === "error") return errorResult(result.text);
+          if (result.kind === "text") return textResult(result.text);
+          const deps = {
+            readAdmin: (toolName: string, opArgs: Record<string, unknown>, bypass: boolean) => {
+              const tool = READ_MAP.get(toolName);
+              if (!tool) throw new Error(`unknown admin read: ${toolName}`);
+              return adminGet(tool, opArgs, bypass);
+            },
+            baseUrl: BASE_URL,
+            apiKey: API_KEY,
+            readOnly: READ_ONLY,
+          };
+          const text = await runPlaygroundOp(result.operation, result.params, deps, result.bypass);
+          if (text.kind === "error") return errorResult(text.text);
+          return textResult(normalizeOutput(text.text));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return errorResult(`Error: ${message}`);
+        }
+      },
+    );
+  }
+
   const docsToolCount = registerDocsTools(server);
 
   server.registerTool(
@@ -488,6 +539,7 @@ function buildServer(): McpServer {
     },
     async () => {
       const mode = !HAS_KEY ? "docs_only" : READ_ONLY ? "read_only" : "full";
+      const playgroundCount = REGISTERED_PLAYGROUND_GROUP ? 1 : 0;
       const info = {
         mode,
         transport: HTTP_TOKEN ? "http" : "stdio",
@@ -500,9 +552,14 @@ function buildServer(): McpServer {
         cache_ttl_seconds: CACHE_TTL_SECONDS,
         read_groups: REGISTERED_READ_GROUPS.length,
         write_groups: REGISTERED_WRITE_GROUPS.length,
+        playground: playgroundCount === 1,
         docs_tools: docsToolCount,
         total_tools:
-          REGISTERED_READ_GROUPS.length + REGISTERED_WRITE_GROUPS.length + docsToolCount + 1,
+          REGISTERED_READ_GROUPS.length +
+          REGISTERED_WRITE_GROUPS.length +
+          playgroundCount +
+          docsToolCount +
+          1,
       };
       return textResult(normalizeOutput(JSON.stringify(info)));
     },

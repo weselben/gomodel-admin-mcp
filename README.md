@@ -96,6 +96,52 @@ Some MCP clients cap tool results far lower and cut mid-JSON — set the
 variable to just under your client's limit so the server does the cutting.
 For list endpoints, page with `limit`/`offset` params where supported.
 
+## Playground (opt-in)
+
+`admin_playground` mirrors the dashboard Playground page for AI agents. It is
+**default-off**: set `GOMODEL_PLAYGROUND=1` (plus the admin key) to register
+it. Two operations:
+
+- `context` — what the UI's model picker knows: the effective user-path
+  header name (from `GET /admin/runtime/config`), the model inventory, and
+  virtual models with their `user_paths` access policies.
+- `send` — one inference request through the gateway's **public** API
+  (`/v1/chat/completions`, `/v1/responses`, or `/v1/messages`), using the
+  configured admin key. Instead of the raw API response, the tool finds the
+  request's audit-trail entry (`GET /admin/audit/log` →
+  `GET /admin/audit/detail`) and returns one object —
+  `{audit_id, status, latency, usage, request_body, response_body,
+  request_headers, response_headers}` — byte-equivalent to the dashboard
+  JSON panel. If the gateway has `LOGGING_LOG_BODIES=false` or the entry
+  cannot be found within a short window, the direct API response is returned
+  with `source: "direct"` and a warning naming the missing data. Bodies over
+  the 1 MB capture cap surface as `*_body_too_big_to_handle` flags, like the
+  audit trail.
+
+Behavior details:
+
+- User path: if the target model's virtual-model policy declares
+  `user_paths`, the first entry is sent automatically (the UI's prefill).
+  The `user_path` param overrides it. The user path is only settable through
+  that param — never through headers.
+- Header rules: credential headers (`authorization`, `proxy-authorization`,
+  `cookie`, `set-cookie`, `x-api-key`, `api-key`, `x-goog-api-key`,
+  `x-auth-token`, `x-access-token`, `x-gomodel-key` — the gateway's
+  `internal/core/credential_headers.go` list, matched case-insensitively)
+  and the configured user-path header are rejected with field-level errors.
+  `Authorization` is always set by the tool from its configured key;
+  `Content-Type` is forced per dialect.
+- `stream: true` assembles the SSE stream into the non-streaming shape, like
+  the UI does.
+- `send` respects `GOMODEL_READ_ONLY`: on a read-only server it refuses;
+  `context` still works.
+- Concurrent same-model `send` calls are not safe: the audit reassembly
+  filters by `model` + `path` within a ~1-second window and takes the first
+  match. Two concurrent `send` calls with the same model and endpoint can
+  each reassemble the other call's bodies. Serialize concurrent calls, or
+  use distinct models per concurrent call, until per-request correlation
+  is added.
+
 ## Modes and passive token cost
 
 <!-- CI-generated: bun run measure-tokens rewrites the rows below on release. Do not edit them by hand. -->
@@ -121,6 +167,7 @@ Measured from `tools/list` (JSON payload, tokens ≈ bytes / 4):
 | `GOMODEL_ADMIN_API_KEY` | no       | —                       | Admin API key; without it the server is docs-only |
 | `GOMODEL_BASE_URL`      | no       | `http://localhost:8080` | Base URL of the GoModel gateway                 |
 | `GOMODEL_READ_ONLY`     | no       | unset (writes enabled)  | `1`/`true` registers read areas only            |
+| `GOMODEL_PLAYGROUND`    | no       | unset (playground off)  | `1`/`true` registers the `admin_playground` area (requires admin key; `send` respects `GOMODEL_READ_ONLY`) |
 | `GOMODEL_HTTP_TOKEN`    | no       | —                       | Set to serve streamable-HTTP MCP on `/mcp`; clients must send it as bearer |
 | `HOST`                  | no       | `127.0.0.1`             | HTTP bind address (HTTP mode); `0.0.0.0` for containers only |
 | `PORT`                  | no       | `3000`                  | HTTP port (HTTP mode)                           |

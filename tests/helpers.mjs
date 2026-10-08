@@ -18,6 +18,7 @@ export async function startMock() {
     requests: mock.requests,
     requestUrls: mock.requestUrls,
     requestBodies: mock.requestBodies,
+    auditEntries: mock.auditEntries,
     close: () => mock.close(),
   };
 }
