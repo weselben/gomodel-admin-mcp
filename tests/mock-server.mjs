@@ -75,6 +75,34 @@ function faultFor(method, path) {
   return null;
 }
 
+/**
+ * Same grammar as MOCK_FAULT but scoped to the public /v1 routes (which
+ * faultFor's admin-route matcher does not see). Used by playground tests to
+ * exercise non-2xx public-API responses.
+ */
+function publicFaultFor(method, path) {
+  const faults = process.env.MOCK_PUBLIC_FAULT ?? "";
+  for (const entry of faults.split(",").map((e) => e.trim()).filter(Boolean)) {
+    const match = entry.match(/^(\S+)\s+(\S+)=(\d{3})$/);
+    if (!match) continue;
+    if (match[1] === method && match[2] === path) {
+      const code = Number(match[3]);
+      return {
+        status: code,
+        body: {
+          error: {
+            type: "invalid_request_error",
+            message: `fault injection on ${method} ${path}`,
+            param: null,
+            code: null,
+          },
+        },
+      };
+    }
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------------ */
 /* Route table: spec paths + hand-added endpoints                      */
 /* ------------------------------------------------------------------ */
@@ -146,6 +174,16 @@ const EXTRA_ROUTES = [
   { method: "GET", path: "/admin/failover" },
   { method: "PUT", path: "/admin/failover", bodyRequired: ["primary_model", "fallback_models"] },
   { method: "DELETE", path: "/admin/failover", bodyRequired: ["primary_model"] },
+];
+
+/**
+ * Public API (/v1) routes for the playground tools — mirrored from the
+ * gateway's internal/server/http.go. Not part of the admin spec.
+ */
+const PUBLIC_ROUTES = [
+  { method: "POST", path: "/v1/chat/completions" },
+  { method: "POST", path: "/v1/responses" },
+  { method: "POST", path: "/v1/messages" },
 ];
 
 /** Spec (swagger 2) operation -> normalized route entry. */
@@ -284,6 +322,24 @@ export function createMockServer() {
   /** @type {{method: string, path: string, body: unknown}[]} parsed request bodies, in arrival order */
   const requestBodies = [];
 
+  /** Virtual models upserted through PUT /admin/virtual-models during this test run. */
+  const virtualModels = new Map();
+
+  /**
+   * In-memory audit trail for the playground roundtrip: each public /v1
+   * request records one entry shaped like the gateway's auditlog.LogEntry —
+   * GET /admin/audit/log then finds it by requested_model + path and
+   * GET /admin/audit/detail serves it. Public requests /v1/* are recorded
+   * FIRST (request arrives -> audit entry written), so a lookup right after
+   * the response deterministically finds this request's entry.
+   */
+  const auditEntries = [];
+  let nextAuditId = 1000;
+  let lastAuditId = null;
+  // Test overrides for the fallback simulation knobs.
+  let simulateBodies = (process.env.MOCK_PLAYGROUND_BODIES ?? "1") !== "0";
+  let simulateAuditMiss = process.env.MOCK_PLAYGROUND_AUDIT_MISS === "1";
+
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://mock");
     const pathname = url.pathname.replace(/\/+$/, "") || "/";
@@ -305,6 +361,151 @@ export function createMockServer() {
     if (!token.startsWith("sk_gom_") || token === "sk_gom_wrong") {
       const err = ERR.auth();
       return send(err.status, err.body);
+    }
+
+    // Public API (/v1): record an audit entry (like the gateway's audit
+    // middleware would), then answer with a dialect-shaped completion.
+    const publicRoute = PUBLIC_ROUTES.find((r) => r.method === method && r.path === pathname);
+    if (publicRoute) {
+      // Public-API fault injection: short-circuit before recording the audit
+      // entry, since a real gateway does not audit failed upstream calls.
+      const publicFault = publicFaultFor(method, pathname);
+      if (publicFault) return send(publicFault.status, publicFault.body);
+
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let body = {};
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+      } catch {
+        const err = ERR.badRequest("invalid request body: malformed JSON");
+        return send(err.status, err.body);
+      }
+      requestBodies.push({ method, path: pathname, body, headers: { ...req.headers } });
+
+      const entryId = `audit-${nextAuditId++}`;
+      lastAuditId = simulateAuditMiss ? null : entryId;
+      const userPathHeaderName = "X-GoModel-User-Path";
+      const model = typeof body.model === "string" ? body.model : "unknown";
+      const isMessages = pathname === "/v1/messages";
+      const text = `mock completion for ${model}`;
+      const usage = { input_tokens: 3, output_tokens: 5, total_tokens: 8 };
+      auditEntries.push({
+        id: entryId,
+        timestamp: new Date().toISOString(),
+        duration_ns: 1_500_000,
+        requested_model: model,
+        resolved_model: model,
+        provider: "demo-provider",
+        method: "POST",
+        path: pathname,
+        user_path: req.headers[userPathHeaderName.toLowerCase()] ?? "",
+        status_code: 200,
+        usage,
+        data: {
+          ...(simulateBodies
+            ? {
+                request_body: body,
+                response_body: isMessages
+                  ? { id: entryId, type: "message", role: "assistant", content: [{ type: "text", text }], usage }
+                  : { id: entryId, object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }], usage },
+                request_headers: {
+                  Authorization: "[redacted]",
+                  "Content-Type": req.headers["content-type"] ?? "application/json",
+                  ...(req.headers[userPathHeaderName.toLowerCase()]
+                    ? { [userPathHeaderName]: req.headers[userPathHeaderName.toLowerCase()] }
+                    : {}),
+                },
+                response_headers: { "content-type": "application/json" },
+              }
+            : {}),
+        },
+      });
+
+      if (body.stream === true) {
+        // SSE frames per dialect; the tool assembles them into the
+        // non-streaming shape.
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+        });
+        if (isMessages) {
+          res.write(`event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: entryId, type: "message", role: "assistant", model, usage } })}\n\n`);
+          res.write(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text } })}\n\n`);
+          res.write(`event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", usage: { output_tokens: 5 } })}\n\n`);
+        } else {
+          res.write(`data: ${JSON.stringify({ id: entryId, object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { role: "assistant" } }] })}\n\n`);
+          res.write(`data: ${JSON.stringify({ id: entryId, object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: text }, finish_reason: null }] })}\n\n`);
+          res.write(`data: ${JSON.stringify({ id: entryId, object: "chat.completion.chunk", model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage })}\n\n`);
+          res.write("data: [DONE]\n\n");
+        }
+        return res.end();
+      }
+
+      const direct = isMessages
+        ? { id: entryId, type: "message", role: "assistant", model, content: [{ type: "text", text }], usage }
+        : { id: entryId, object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }], usage };
+      return send(200, direct);
+    }
+
+    // Virtual-model upserts recorded so playground user-path auto-resolve
+    // can see the policies this test registered.
+    if (method === "PUT" && pathname === "/admin/virtual-models") {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const putBody = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+      const source = typeof putBody.source === "string" ? putBody.source : "";
+      if (source) virtualModels.set(source, { source, ...putBody });
+      requestBodies.push({ method, path: pathname, body: putBody });
+      return send(200, { source, updated: true });
+    }
+    if (method === "GET" && pathname === "/admin/virtual-models") {
+      const stored = [...virtualModels.values()];
+      if (stored.length > 0) {
+        return send(200, stored);
+      }
+      // fall through to the generic synthesized list
+    }
+
+    // Playground context: the effective user-path header name comes from
+    // runtime config; the synthesized schema value would be junk ("string").
+    if (method === "GET" && pathname === "/admin/runtime/config") {
+      const generic = matchRoute(routes, method, pathname);
+      if (generic) {
+        const cfg = generic.route.schema
+          ? synthExample(generic.route.schema)
+          : fallbackPayload(method, generic.route.path);
+        cfg.USER_PATH_HEADER = "X-GoModel-User-Path";
+        return send(200, cfg);
+      }
+    }
+
+    // Audit roundtrip for the playground tools: serve the recorded entries.
+    // Falls through to the generic route handlers only when the playground
+    // roundtrip has not recorded anything (admin API coverage sweep).
+    if (method === "GET" && pathname === "/admin/audit/detail" && lastAuditId !== null) {
+      const logId = url.searchParams.get("log_id");
+      const entry = auditEntries.find((e) => e.id === logId);
+      if (!entry) {
+        const err = ERR.notFound("audit entry not found");
+        return send(err.status, err.body);
+      }
+      return send(200, entry);
+    }
+    if (method === "GET" && pathname === "/admin/audit/log") {
+      if (simulateAuditMiss) {
+        return send(200, { entries: [], limit: 10, offset: 0, total: 0 });
+      }
+      const model = url.searchParams.get("requested_model");
+      const path = url.searchParams.get("path");
+      const filtered = auditEntries.filter(
+        (e) =>
+          (model === null || e.requested_model === model) &&
+          (path === null || e.path === path),
+      );
+      // Most recent first, like the gateway.
+      const entries = [...filtered].reverse();
+      return send(200, { entries, limit: 10, offset: 0, total: entries.length });
     }
 
     const matched = matchRoute(routes, method, pathname);
@@ -406,6 +607,7 @@ export function createMockServer() {
     requests,
     requestUrls,
     requestBodies,
+    auditEntries,
     /** Listen on an ephemeral port; resolves to the base URL. */
     listen() {
       return new Promise((resolve) => {
