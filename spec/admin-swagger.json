@@ -932,21 +932,49 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact model name",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact model names; repeat or comma-separate for several",
       "name": "model",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by provider name or provider type",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by provider names or types; repeat or comma-separate for several",
       "name": "provider",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by request label (exact match)",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by request labels (exact match); repeat for several",
       "name": "label",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact request endpoints, e.g. /v1/chat/completions,/v1/messages; repeat or comma-separate for several",
+      "name": "endpoint",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by comma-separated operations, e.g. chat_completions,embeddings",
+      "name": "operation",
       "in": "query"
      },
      {
@@ -956,14 +984,22 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact managed auth key ID",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by managed auth key IDs; repeat or comma-separate for several",
       "name": "auth_key_id",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by tracked user path subtree",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by tracked user path subtrees; repeat for several",
       "name": "user_path",
       "in": "query"
      },
@@ -1290,7 +1326,7 @@
     "tags": [
      "admin"
     ],
-    "summary": "List virtual MCP servers (config-declared, read-only)",
+    "summary": "List virtual MCP servers (config-declared and admin-managed)",
     "responses": {
      "200": {
       "description": "OK",
@@ -1303,6 +1339,127 @@
      },
      "401": {
       "description": "Unauthorized",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   },
+   "put": {
+    "description": "Members must be existing MCP servers. A new virtual server may not use an MCP server's slug, and config-declared virtual servers are read-only.",
+    "consumes": [
+     "application/json"
+    ],
+    "produces": [
+     "application/json"
+    ],
+    "tags": [
+     "admin"
+    ],
+    "summary": "Create or update one admin-managed virtual MCP server",
+    "parameters": [
+     {
+      "description": "Virtual MCP server definition",
+      "name": "virtual_server",
+      "in": "body",
+      "required": true,
+      "schema": {
+       "$ref": "#/definitions/admin.upsertMCPVirtualServerRequest"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "schema": {
+       "$ref": "#/definitions/admin.mcpVirtualServerResponse"
+      }
+     },
+     "400": {
+      "description": "Bad Request",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "502": {
+      "description": "Bad Gateway",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/admin/mcp-virtual-servers/{name}": {
+   "delete": {
+    "produces": [
+     "application/json"
+    ],
+    "tags": [
+     "admin"
+    ],
+    "summary": "Delete one admin-managed virtual MCP server",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Virtual MCP server name",
+      "name": "name",
+      "in": "path",
+      "required": true
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "No Content"
+     },
+     "400": {
+      "description": "Bad Request",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "502": {
+      "description": "Bad Gateway",
       "schema": {
        "$ref": "#/definitions/core.GatewayError"
       }
@@ -2294,6 +2451,184 @@
     ]
    }
   },
+  "/admin/usage/breakdown": {
+   "get": {
+    "description": "Pivots the filtered usage by a row and an optional column dimension. Keys rank by the metric; those past limit fold into a trailing \"other\" key. Period keys follow interval and are never folded. A request with several labels counts once per label.",
+    "produces": [
+     "application/json"
+    ],
+    "tags": [
+     "admin"
+    ],
+    "summary": "Get a two-dimension usage breakdown",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Row dimension: model, provider, user_path, label, endpoint, auth_key, period",
+      "name": "rows",
+      "in": "query",
+      "required": true
+     },
+     {
+      "type": "string",
+      "description": "Column dimension (same values, different from rows); omit or none for one column",
+      "name": "columns",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Ranking metric for the top-N cut: cost, tokens, requests (default cost)",
+      "name": "metric",
+      "in": "query"
+     },
+     {
+      "type": "integer",
+      "description": "Keys kept per dimension before the rest fold into other (default 10, max 50)",
+      "name": "limit",
+      "in": "query"
+     },
+     {
+      "type": "integer",
+      "description": "Group user paths by their first N segments (0 keeps full paths, max 16)",
+      "name": "user_path_depth",
+      "in": "query"
+     },
+     {
+      "type": "integer",
+      "description": "Number of days (default 30)",
+      "name": "days",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD)",
+      "name": "start_date",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD)",
+      "name": "end_date",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Period grouping: daily, weekly, monthly, yearly (default daily)",
+      "name": "interval",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact model names; repeat or comma-separate for several",
+      "name": "model",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by provider names or types; repeat or comma-separate for several",
+      "name": "provider",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by request labels (exact match); repeat for several",
+      "name": "label",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact request endpoints, e.g. /v1/chat/completions,/v1/messages; repeat or comma-separate for several",
+      "name": "endpoint",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by comma-separated operations, e.g. chat_completions,embeddings",
+      "name": "operation",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by exact detected session ID",
+      "name": "session_id",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by managed auth key IDs; repeat or comma-separate for several",
+      "name": "auth_key_id",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by tracked user path subtrees; repeat for several",
+      "name": "user_path",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Cache mode filter: uncached, cached, all (default uncached)",
+      "name": "cache_mode",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "schema": {
+       "$ref": "#/definitions/usage.UsageBreakdown"
+      }
+     },
+     "400": {
+      "description": "Bad Request",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "403": {
+      "description": "Forbidden",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
   "/admin/usage/daily": {
    "get": {
     "produces": [
@@ -2329,21 +2664,49 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact model name",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact model names; repeat or comma-separate for several",
       "name": "model",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by provider name or provider type",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by provider names or types; repeat or comma-separate for several",
       "name": "provider",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by request label (exact match)",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by request labels (exact match); repeat for several",
       "name": "label",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact request endpoints, e.g. /v1/chat/completions,/v1/messages; repeat or comma-separate for several",
+      "name": "endpoint",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by comma-separated operations, e.g. chat_completions,embeddings",
+      "name": "operation",
       "in": "query"
      },
      {
@@ -2353,14 +2716,22 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact managed auth key ID",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by managed auth key IDs; repeat or comma-separate for several",
       "name": "auth_key_id",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by tracked user path subtree",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by tracked user path subtrees; repeat for several",
       "name": "user_path",
       "in": "query"
      },
@@ -2378,6 +2749,150 @@
        "type": "array",
        "items": {
         "$ref": "#/definitions/usage.DailyUsage"
+       }
+      }
+     },
+     "400": {
+      "description": "Bad Request",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     },
+     "403": {
+      "description": "Forbidden",
+      "schema": {
+       "$ref": "#/definitions/core.GatewayError"
+      }
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/admin/usage/endpoints": {
+   "get": {
+    "description": "Returns per-endpoint token and cost aggregates. Each row names\nthe operation its endpoint belongs to, so endpoints that mean\nthe same thing can be folded: /v1/chat/completions and\n/v1/messages are both chat_completions.",
+    "produces": [
+     "application/json"
+    ],
+    "tags": [
+     "admin"
+    ],
+    "summary": "Get usage breakdown by request endpoint",
+    "parameters": [
+     {
+      "type": "integer",
+      "description": "Number of days (default 30)",
+      "name": "days",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD)",
+      "name": "start_date",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD)",
+      "name": "end_date",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact model names; repeat or comma-separate for several",
+      "name": "model",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by provider names or types; repeat or comma-separate for several",
+      "name": "provider",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by request labels (exact match); repeat for several",
+      "name": "label",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact request endpoints, e.g. /v1/chat/completions,/v1/messages; repeat or comma-separate for several",
+      "name": "endpoint",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by comma-separated operations, e.g. chat_completions,embeddings",
+      "name": "operation",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by exact detected session ID",
+      "name": "session_id",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by managed auth key IDs; repeat or comma-separate for several",
+      "name": "auth_key_id",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by tracked user path subtrees; repeat for several",
+      "name": "user_path",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Cache mode filter: uncached, cached, all (default uncached)",
+      "name": "cache_mode",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "schema": {
+       "type": "array",
+       "items": {
+        "$ref": "#/definitions/usage.EndpointUsage"
        }
       }
      },
@@ -2437,21 +2952,49 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact model name",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact model names; repeat or comma-separate for several",
       "name": "model",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by provider name or provider type",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by provider names or types; repeat or comma-separate for several",
       "name": "provider",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by request label (exact match)",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by request labels (exact match); repeat for several",
       "name": "label",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact request endpoints, e.g. /v1/chat/completions,/v1/messages; repeat or comma-separate for several",
+      "name": "endpoint",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by comma-separated operations, e.g. chat_completions,embeddings",
+      "name": "operation",
       "in": "query"
      },
      {
@@ -2461,14 +3004,22 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact managed auth key ID",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by managed auth key IDs; repeat or comma-separate for several",
       "name": "auth_key_id",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by tracked user path subtree",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by tracked user path subtrees; repeat for several",
       "name": "user_path",
       "in": "query"
      },
@@ -2544,26 +3095,58 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact model name",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact model names; repeat or comma-separate for several",
       "name": "model",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by provider name or provider type",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by provider names or types; repeat or comma-separate for several",
       "name": "provider",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by request label (exact match)",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by request labels (exact match); repeat for several",
       "name": "label",
       "in": "query"
      },
      {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact request endpoints, e.g. /v1/chat/completions,/v1/messages; repeat or comma-separate for several",
+      "name": "endpoint",
+      "in": "query"
+     },
+     {
       "type": "string",
-      "description": "Filter by tracked user path subtree",
+      "description": "Filter by comma-separated operations, e.g. chat_completions,embeddings",
+      "name": "operation",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by tracked user path subtrees; repeat for several",
       "name": "user_path",
       "in": "query"
      },
@@ -2580,14 +3163,18 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact managed auth key ID",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by managed auth key IDs; repeat or comma-separate for several",
       "name": "auth_key_id",
       "in": "query"
      },
      {
       "type": "string",
-      "description": "Search across model, provider, request_id, provider_id, session_id",
+      "description": "Search across model, provider, endpoint, request_id, provider_id, session_id",
       "name": "search",
       "in": "query"
      },
@@ -2666,21 +3253,49 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact model name",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact model names; repeat or comma-separate for several",
       "name": "model",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by provider name or provider type",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by provider names or types; repeat or comma-separate for several",
       "name": "provider",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by request label (exact match)",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by request labels (exact match); repeat for several",
       "name": "label",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact request endpoints, e.g. /v1/chat/completions,/v1/messages; repeat or comma-separate for several",
+      "name": "endpoint",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by comma-separated operations, e.g. chat_completions,embeddings",
+      "name": "operation",
       "in": "query"
      },
      {
@@ -2690,14 +3305,22 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact managed auth key ID",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by managed auth key IDs; repeat or comma-separate for several",
       "name": "auth_key_id",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by tracked user path subtree",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by tracked user path subtrees; repeat for several",
       "name": "user_path",
       "in": "query"
      },
@@ -2842,21 +3465,49 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact model name",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact model names; repeat or comma-separate for several",
       "name": "model",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by provider name or provider type",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by provider names or types; repeat or comma-separate for several",
       "name": "provider",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by request label (exact match)",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by request labels (exact match); repeat for several",
       "name": "label",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact request endpoints, e.g. /v1/chat/completions,/v1/messages; repeat or comma-separate for several",
+      "name": "endpoint",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by comma-separated operations, e.g. chat_completions,embeddings",
+      "name": "operation",
       "in": "query"
      },
      {
@@ -2866,14 +3517,22 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact managed auth key ID",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by managed auth key IDs; repeat or comma-separate for several",
       "name": "auth_key_id",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by tracked user path subtree",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by tracked user path subtrees; repeat for several",
       "name": "user_path",
       "in": "query"
      },
@@ -2952,21 +3611,49 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact model name",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact model names; repeat or comma-separate for several",
       "name": "model",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by provider name or provider type",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by provider names or types; repeat or comma-separate for several",
       "name": "provider",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by request label (exact match)",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by request labels (exact match); repeat for several",
       "name": "label",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact request endpoints, e.g. /v1/chat/completions,/v1/messages; repeat or comma-separate for several",
+      "name": "endpoint",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by comma-separated operations, e.g. chat_completions,embeddings",
+      "name": "operation",
       "in": "query"
      },
      {
@@ -2976,14 +3663,22 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact managed auth key ID",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by managed auth key IDs; repeat or comma-separate for several",
       "name": "auth_key_id",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by tracked user path subtree",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by tracked user path subtrees; repeat for several",
       "name": "user_path",
       "in": "query"
      },
@@ -3108,21 +3803,49 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact model name",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact model names; repeat or comma-separate for several",
       "name": "model",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by provider name or provider type",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by provider names or types; repeat or comma-separate for several",
       "name": "provider",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by request label (exact match)",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by request labels (exact match); repeat for several",
       "name": "label",
+      "in": "query"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by exact request endpoints, e.g. /v1/chat/completions,/v1/messages; repeat or comma-separate for several",
+      "name": "endpoint",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Filter by comma-separated operations, e.g. chat_completions,embeddings",
+      "name": "operation",
       "in": "query"
      },
      {
@@ -3132,14 +3855,22 @@
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by exact managed auth key ID",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by managed auth key IDs; repeat or comma-separate for several",
       "name": "auth_key_id",
       "in": "query"
      },
      {
-      "type": "string",
-      "description": "Filter by tracked user path subtree",
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Filter by tracked user path subtrees; repeat for several",
       "name": "user_path",
       "in": "query"
      },
@@ -3919,17 +4650,44 @@
   "admin.mcpVirtualServerResponse": {
    "type": "object",
    "properties": {
+    "configured_tool_discovery": {
+     "description": "ConfiguredToolDiscovery is the stored setting: \"off\", \"search\", or \"\"\nto inherit the gateway default. ToolDiscovery is the effective mode.",
+     "type": "string"
+    },
     "conflict": {
      "type": "string"
     },
     "description": {
      "type": "string"
     },
+    "managed": {
+     "type": "boolean"
+    },
     "missing_servers": {
      "type": "array",
      "items": {
       "type": "string"
      }
+    },
+    "name": {
+     "type": "string"
+    },
+    "servers": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "tool_discovery": {
+     "type": "string"
+    }
+   }
+  },
+  "admin.upsertMCPVirtualServerRequest": {
+   "type": "object",
+   "properties": {
+    "description": {
+     "type": "string"
     },
     "name": {
      "type": "string"
@@ -4346,6 +5104,25 @@
     "GUARDRAILS_ENABLED": {
      "type": "string"
     },
+    "LICENSE_BADGE": {
+     "description": "The license a distribution registered (ext.License), so the sidebar\nshows its badge and the days left. Times are RFC 3339 in UTC, windows\nwhole days; all are empty for open-source builds.",
+     "type": "string"
+    },
+    "LICENSE_EXPIRES_AT": {
+     "type": "string"
+    },
+    "LICENSE_NOTICE_DAYS": {
+     "type": "string"
+    },
+    "LICENSE_TRIAL": {
+     "type": "string"
+    },
+    "LICENSE_VALID_UNTIL": {
+     "type": "string"
+    },
+    "LICENSE_WARNING_DAYS": {
+     "type": "string"
+    },
     "LOGGING_ENABLED": {
      "type": "string"
     },
@@ -4363,6 +5140,10 @@
      "type": "string"
     },
     "PLUGINS_ENABLED": {
+     "type": "string"
+    },
+    "PRICING_MARKUPS_ENABLED": {
+     "description": "PricingMarkups mirrors pricing.markups_enabled, so the dashboard shows\nbilled cost only when the markup feature is on.",
      "type": "string"
     },
     "RATE_LIMITS_ENABLED": {
@@ -4417,9 +5198,46 @@
     }
    }
   },
+  "usage.UsageBreakdown": {
+   "type": "object",
+   "properties": {
+    "cells": {
+     "type": "array",
+     "items": {
+      "$ref": "#/definitions/usage.BreakdownCell"
+     }
+    },
+    "column_dimension": {
+     "$ref": "#/definitions/usage.BreakdownDimension"
+    },
+    "columns": {
+     "type": "array",
+     "items": {
+      "$ref": "#/definitions/usage.BreakdownKey"
+     }
+    },
+    "metric": {
+     "$ref": "#/definitions/usage.BreakdownMetric"
+    },
+    "row_dimension": {
+     "$ref": "#/definitions/usage.BreakdownDimension"
+    },
+    "rows": {
+     "type": "array",
+     "items": {
+      "$ref": "#/definitions/usage.BreakdownKey"
+     }
+    }
+   }
+  },
   "usage.DailyUsage": {
    "type": "object",
    "properties": {
+    "billed_cost": {
+     "description": "BilledCost includes the period's billed response-cache hits in every\ncache mode, so a period served only from the cache can appear with no\nrequests.",
+     "type": "number",
+     "x-nullable": true
+    },
     "cache_write_input_tokens": {
      "type": "integer"
     },
@@ -4456,9 +5274,71 @@
     }
    }
   },
+  "usage.EndpointUsage": {
+   "type": "object",
+   "properties": {
+    "billed_cost": {
+     "type": "number",
+     "x-nullable": true
+    },
+    "cache_write_input_tokens": {
+     "type": "integer"
+    },
+    "cached_input_cost": {
+     "type": "number",
+     "x-nullable": true
+    },
+    "cached_input_tokens": {
+     "type": "integer"
+    },
+    "endpoint": {
+     "type": "string"
+    },
+    "input_cost": {
+     "type": "number",
+     "x-nullable": true
+    },
+    "input_tokens": {
+     "type": "integer"
+    },
+    "local_cached_input_tokens": {
+     "type": "integer"
+    },
+    "local_cached_output_tokens": {
+     "type": "integer"
+    },
+    "operation": {
+     "type": "string"
+    },
+    "output_cost": {
+     "type": "number",
+     "x-nullable": true
+    },
+    "output_tokens": {
+     "type": "integer"
+    },
+    "requests": {
+     "type": "integer"
+    },
+    "total_cost": {
+     "type": "number",
+     "x-nullable": true
+    },
+    "total_tokens": {
+     "type": "integer"
+    },
+    "uncached_input_tokens": {
+     "type": "integer"
+    }
+   }
+  },
   "usage.LabelUsage": {
    "type": "object",
    "properties": {
+    "billed_cost": {
+     "type": "number",
+     "x-nullable": true
+    },
     "cache_write_input_tokens": {
      "type": "integer"
     },
@@ -4530,6 +5410,10 @@
   "usage.ModelUsage": {
    "type": "object",
    "properties": {
+    "billed_cost": {
+     "type": "number",
+     "x-nullable": true
+    },
     "cache_write_input_tokens": {
      "type": "integer"
     },
@@ -4657,6 +5541,11 @@
      "description": "Rewrite savings: prompt tokens request rewriters removed before the\nprovider call, and the estimated input cost avoided (nil when no\nmatched row had a priced savings estimate).",
      "type": "integer"
     },
+    "total_billed_cost": {
+     "description": "TotalBilledCost is what the period was billed at: provider cost plus\nmarkup. Unlike the other cost fields it includes billed response-cache\nhits in every cache mode, because those are billed to the caller too.",
+     "type": "number",
+     "x-nullable": true
+    },
     "total_cost": {
      "type": "number"
     },
@@ -4703,6 +5592,10 @@
   "usage.UserPathUsage": {
    "type": "object",
    "properties": {
+    "billed_cost": {
+     "type": "number",
+     "x-nullable": true
+    },
     "cache_write_input_tokens": {
      "type": "integer"
     },
@@ -5331,6 +6224,9 @@
     "batch_output_per_mtok": {
      "type": "number"
     },
+    "cache_write_1h_per_mtok": {
+     "type": "number"
+    },
     "cache_write_per_mtok": {
      "type": "number"
     },
@@ -5641,11 +6537,95 @@
     }
    }
   },
+  "usage.BreakdownCell": {
+   "type": "object",
+   "properties": {
+    "billed_cost": {
+     "type": "number",
+     "x-nullable": true
+    },
+    "column": {
+     "type": "integer"
+    },
+    "input_tokens": {
+     "type": "integer"
+    },
+    "output_tokens": {
+     "type": "integer"
+    },
+    "requests": {
+     "type": "integer"
+    },
+    "row": {
+     "type": "integer"
+    },
+    "total_cost": {
+     "type": "number",
+     "x-nullable": true
+    },
+    "total_tokens": {
+     "type": "integer"
+    }
+   }
+  },
+  "usage.BreakdownDimension": {
+   "type": "string",
+   "enum": [
+    "",
+    "model",
+    "provider",
+    "user_path",
+    "label",
+    "endpoint",
+    "auth_key",
+    "period"
+   ],
+   "x-enum-varnames": [
+    "BreakdownNone",
+    "BreakdownModel",
+    "BreakdownProvider",
+    "BreakdownUserPath",
+    "BreakdownLabel",
+    "BreakdownEndpoint",
+    "BreakdownAuthKey",
+    "BreakdownPeriod"
+   ]
+  },
+  "usage.BreakdownKey": {
+   "type": "object",
+   "properties": {
+    "folded": {
+     "type": "integer"
+    },
+    "key": {
+     "type": "string"
+    },
+    "other": {
+     "type": "boolean"
+    }
+   }
+  },
+  "usage.BreakdownMetric": {
+   "type": "string",
+   "enum": [
+    "cost",
+    "tokens",
+    "requests"
+   ],
+   "x-enum-varnames": [
+    "BreakdownMetricCost",
+    "BreakdownMetricTokens",
+    "BreakdownMetricRequests"
+   ]
+  },
   "usage.UsageLogEntry": {
    "type": "object",
    "properties": {
     "auth_key_id": {
      "type": "string"
+    },
+    "billed_cost": {
+     "type": "number"
     },
     "cache_type": {
      "type": "string"
@@ -5682,6 +6662,12 @@
      "items": {
       "type": "string"
      }
+    },
+    "markup_percent": {
+     "type": "number"
+    },
+    "markup_selector": {
+     "type": "string"
     },
     "model": {
      "type": "string"
@@ -5737,6 +6723,11 @@
   "usage.SessionUsage": {
    "type": "object",
    "properties": {
+    "billed_cost": {
+     "description": "BilledCost includes the session's billed response-cache hits.",
+     "type": "number",
+     "x-nullable": true
+    },
     "input_cost": {
      "type": "number",
      "x-nullable": true
@@ -6078,6 +7069,10 @@
      "type": "number"
     },
     "batch_output_per_mtok": {
+     "type": "number"
+    },
+    "cache_write_1h_per_mtok": {
+     "description": "Anthropic 1-hour TTL cache writes; cache_write_per_mtok prices the default 5-minute ones",
      "type": "number"
     },
     "cache_write_per_mtok": {
