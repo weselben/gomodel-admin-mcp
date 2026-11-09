@@ -1,2 +1,2 @@
-gomodel_commit: eceb306d4c298b5a5a0b609645d3b01fb18ab097
-generated_at: 2026-10-12T15:00:44Z
+gomodel_commit: dff270dbb8e733109a7dd6df5a593e652715d067
+generated_at: 2026-11-09T15:38:49Z
