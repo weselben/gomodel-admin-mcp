@@ -181,11 +181,23 @@ jobs:
             exit 0
           fi
           git commit -m "chore: update admin swagger spec from gomodel $GOMODEL_SHORT"
-          git push -f origin "$BRANCH"
-          # Release policy: nothing auto-merges. Human review/merge is the gate.
-          gh pr create --base main --head "$BRANCH" \
-            --title "chore: update admin swagger spec from gomodel $GOMODEL_SHORT" \
-            --body-file /tmp/pr-body.md
+
+          # Check if there's an open swagger-update PR. If so, update it
+          # instead of creating a new one. This prevents PR pile-up.
+          EXISTING_PR=$(gh pr list --state open --search "chore: update admin swagger spec" --limit 1 --json number --jq '.[0].number // empty' 2>/dev/null || true)
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Found existing PR #$EXISTING_PR. Updating it..."
+            git push -f origin "$BRANCH"
+            gh pr edit "$EXISTING_PR" \
+              --title "chore: update admin swagger spec from gomodel $GOMODEL_SHORT" \
+              --body-file /tmp/pr-body.md
+          else
+            echo "No existing swagger PR. Creating new one..."
+            git push -f origin "$BRANCH"
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore: update admin swagger spec from gomodel $GOMODEL_SHORT" \
+              --body-file /tmp/pr-body.md
+          fi
 
       - name: up-to-date summary
         if: steps.diff.outputs.changed != 'true'
