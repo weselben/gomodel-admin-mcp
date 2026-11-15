@@ -113,6 +113,58 @@ export const EXTRA_WRITE_TOOLS: WriteTool[] = [
     body: () => ({}),
   },
   {
+    name: "start_mcp_server_oauth",
+    method: "POST",
+    path: "/mcp-servers/{name}/oauth/start",
+    description:
+      "Start an OAuth sign-in to one MCP server. Runs authorization discovery (protected resource metadata, authorization server metadata, PKCE check, dynamic client registration when no client_id is given) and returns the authorization URL to open in the browser. The response sets a short-lived cookie the callback checks.",
+    schema: {
+      name: z.string().describe("MCP server slug"),
+      client_id: z.string().optional().describe("OAuth client id; omit for dynamic client registration"),
+      client_secret: z.string().optional().describe("OAuth client secret"),
+      redirect_uri: z.string().describe("Redirect URI the OAuth callback targets"),
+    },
+    body: (args) => pick(args, ["client_id", "client_secret", "redirect_uri"]),
+  },
+  {
+    name: "sign_out_mcp_server",
+    method: "DELETE",
+    path: "/mcp-servers/{name}/oauth",
+    description:
+      "Sign out of one MCP server: delete the stored OAuth tokens and reconnect the server without them.",
+    schema: {
+      name: z.string().describe("MCP server slug to sign out of"),
+    },
+    body: () => ({}),
+  },
+  {
+    name: "upsert_mcp_virtual_server",
+    method: "PUT",
+    path: "/mcp-virtual-servers",
+    description:
+      "Create or update one admin-managed virtual MCP server. Members must be existing MCP servers. A new virtual server may not use an MCP server's slug, and config-declared virtual servers are read-only.",
+    schema: {
+      name: z.string().describe("Virtual MCP server name"),
+      servers: z.array(z.string()).describe("Member MCP server slugs"),
+      description: z.string().optional().describe("Virtual server description"),
+      tool_discovery: z
+        .string()
+        .optional()
+        .describe('Configured tool discovery mode: "off", "search", or "" to inherit the gateway default'),
+    },
+    body: (args) => pick(args, ["name", "servers", "description", "tool_discovery"]),
+  },
+  {
+    name: "delete_mcp_virtual_server",
+    method: "DELETE",
+    path: "/mcp-virtual-servers/{name}",
+    description: "Delete one admin-managed virtual MCP server by name.",
+    schema: {
+      name: z.string().describe("Virtual MCP server name to remove"),
+    },
+    body: () => ({}),
+  },
+  {
     name: "create_auth_key",
     method: "POST",
     path: "/auth-keys",

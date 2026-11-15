@@ -40,6 +40,8 @@ const usageFilters: QueryParam[] = [
   { name: "provider", description: "Filter by provider name" },
   { name: "label", description: "Filter by request label" },
   { name: "user_path", description: "Filter by user path" },
+  { name: "endpoint", description: "Filter by exact request endpoint, e.g. /v1/chat-completions" },
+  { name: "operation", description: "Filter by comma-separated operations, e.g. chat_completions" },
   { name: "cache_mode", description: "Filter by cache mode (e.g. all, cached_only, bypass)" },
 ];
 
@@ -52,6 +54,9 @@ const auditFilters: QueryParam[] = [
   { name: "method", description: "Filter by HTTP method" },
   { name: "path", description: "Filter by request path" },
   { name: "user_path", description: "Filter by user path" },
+  { name: "user_path_prefix", description: "Filter by user path prefix" },
+  { name: "model_prefix", description: "Filter by requested model id prefix" },
+  { name: "request_id", description: "Filter by request id" },
   { name: "error_type", description: "Filter by error type" },
   { name: "status_code", description: "Filter by HTTP status code" },
   { name: "stream", description: "Filter streaming requests (true/false)" },
@@ -141,6 +146,7 @@ export const ADMIN_TOOLS: AdminTool[] = [
       // /audit/sessions filters threads, not entries — no session_id filter.
       ...auditFilters.filter((p) => p.name !== "search" && p.name !== "session_id"),
       { name: "search", description: "Free-text search" },
+      { name: "session_id", description: "Filter by exact detected session id" },
     ],
   },
   {
@@ -246,6 +252,90 @@ export const ADMIN_TOOLS: AdminTool[] = [
     path: "/mcp-virtual-servers",
     description:
       "List virtual MCP servers (config-declared, read-only). Each serves a subset of the MCP servers at /mcp/{name}; missing_servers lists members no server matches, conflict explains why a virtual server is not served.",
+  },
+  {
+    name: "get_mcp_tool_catalog",
+    path: "/mcp-servers/catalog",
+    description:
+      "Export every tool the MCP servers report, one row per tool with its server, for security reviews and audits. Rows carry exposure state (exposed, shadowed_by), read_only/destructive hints, and each server's transport, enabled flag, status, and user-path scope.",
+    query: [
+      { name: "format", description: "Export format: json (default) or csv (as an attachment)" },
+      { name: "server", description: "Keep the rows of one MCP server, by slug" },
+      { name: "virtual_server", description: "Keep the members of one virtual MCP server" },
+      { name: "user_path", description: "Keep the servers a caller with this user path can see, e.g. /team/x" },
+    ],
+  },
+  {
+    name: "get_usage_benchmark",
+    path: "/usage/benchmark",
+    description:
+      "Benchmark the monthly cost per active user of a group. Each direct child of parent counts as one user; per calendar month returns active users, total/mean/median/p90/max cost per active user, plus unpriced and unattributed cost.",
+    query: [
+      { name: "parent", description: "Group whose direct children are the users, e.g. /eng (default: the credential's scope root, or /)" },
+      { name: "months", description: "Number of months ending at end_month, 1-12 (default 7); ignored with start_month" },
+      { name: "start_month", description: "First month (YYYY-MM, default: months before end_month)" },
+      { name: "end_month", description: "Last month (YYYY-MM, default and latest: the current month)" },
+      { name: "cost_basis", description: "provider (default) or billed; billed requires pricing.markups_enabled" },
+      { name: "top_users", description: "List each month's N highest-cost users (0-50, default 0: aggregates only)" },
+      { name: "model", description: "Filter by exact model names; repeat or comma-separate for several" },
+      { name: "provider", description: "Filter by provider names or types; repeat or comma-separate for several" },
+      { name: "label", description: "Filter by request labels (exact match); repeat for several" },
+      { name: "endpoint", description: "Filter by exact request endpoints, e.g. /v1/chat/completions; repeat or comma-separate for several" },
+      { name: "operation", description: "Filter by comma-separated operations, e.g. chat_completions,embeddings" },
+      { name: "session_id", description: "Filter by exact detected session ID" },
+      { name: "auth_key_id", description: "Filter by managed auth key IDs; repeat or comma-separate for several" },
+      { name: "user_path", description: "Filter by tracked user path subtrees; repeat for several" },
+    ],
+  },
+  {
+    name: "get_usage_breakdown",
+    path: "/usage/breakdown",
+    description:
+      "Pivot the filtered usage by a row and an optional column dimension. Keys rank by the metric; those past limit fold into a trailing \"other\" key. Period keys follow interval and are never folded.",
+    query: [
+      { name: "rows", description: "Row dimension: model, provider, user_path, label, endpoint, auth_key, period", required: true },
+      { name: "columns", description: "Column dimension (same values, different from rows); omit or none for one column" },
+      { name: "metric", description: "Ranking metric for the top-N cut: cost, tokens, requests (default cost)" },
+      { name: "limit", description: "Keys kept per dimension before the rest fold into other (default 10, max 50)" },
+      { name: "user_path_depth", description: "Group user paths by their first N segments (0 keeps full paths, max 16)" },
+      ...timeRange,
+      { name: "interval", description: "Period grouping: daily, weekly, monthly, yearly (default daily)" },
+      { name: "model", description: "Filter by exact model names; repeat or comma-separate for several" },
+      { name: "provider", description: "Filter by provider names or types; repeat or comma-separate for several" },
+      { name: "label", description: "Filter by request labels (exact match); repeat for several" },
+      { name: "endpoint", description: "Filter by exact request endpoints, e.g. /v1/chat/completions; repeat or comma-separate for several" },
+      { name: "operation", description: "Filter by comma-separated operations, e.g. chat_completions,embeddings" },
+      { name: "session_id", description: "Filter by exact detected session ID" },
+      { name: "auth_key_id", description: "Filter by managed auth key IDs; repeat or comma-separate for several" },
+      { name: "user_path", description: "Filter by tracked user path subtrees; repeat for several" },
+      { name: "cache_mode", description: "Cache mode filter: uncached, cached, all (default uncached)" },
+    ],
+  },
+  {
+    name: "get_usage_endpoints",
+    path: "/usage/endpoints",
+    description:
+      "Get per-endpoint token and cost aggregates. Each row names the operation its endpoint belongs to, so endpoints that mean the same thing can be folded: /v1/chat/completions and /v1/messages are both chat_completions.",
+    query: usageFilters,
+  },
+  {
+    name: "get_usage_invoice",
+    path: "/usage/invoice",
+    description:
+      "Export billed usage for the period, one block of model/provider line items per customer user path, with subtotals and a grand total. Amounts are USD. Requires a GoModel Pro license with the billing entitlement and pricing.markups_enabled.",
+    query: [
+      { name: "format", description: "Export format: csv (default, as an attachment) or json" },
+      { name: "parent", description: "Bill each direct child of this user path as one customer, e.g. /customers" },
+      ...timeRange,
+      { name: "model", description: "Filter by exact model names; repeat or comma-separate for several" },
+      { name: "provider", description: "Filter by provider names or types; repeat or comma-separate for several" },
+      { name: "label", description: "Filter by request labels (exact match); repeat for several" },
+      { name: "endpoint", description: "Filter by exact request endpoints, e.g. /v1/chat/completions; repeat or comma-separate for several" },
+      { name: "operation", description: "Filter by comma-separated operations, e.g. chat_completions,embeddings" },
+      { name: "session_id", description: "Filter by exact detected session ID" },
+      { name: "auth_key_id", description: "Filter by managed auth key IDs; repeat or comma-separate for several" },
+      { name: "user_path", description: "Filter by tracked user path subtrees; repeat for several" },
+    ],
   },
   {
     name: "list_failover_rules",
