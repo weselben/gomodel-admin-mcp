@@ -319,7 +319,7 @@ export function createMockServer() {
   const requests = new Map();
   /** @type {string[]} every request line "METHOD /path?query", in arrival order */
   const requestUrls = [];
-  /** @type {{method: string, path: string, body: unknown}[]} parsed request bodies, in arrival order */
+  /** @type {{method: string, path: string, body: unknown, headers?: Record<string, string>}[]} parsed request bodies, in arrival order */
   const requestBodies = [];
 
   /** Virtual models upserted through PUT /admin/virtual-models during this test run. */

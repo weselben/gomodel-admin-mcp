@@ -406,6 +406,195 @@ describe("playground user-path auto-resolve and fallbacks", () => {
     }
   });
 
+  test("target-level user_paths resolve when the model has no top-level policy", async () => {
+    const mock = await startMock();
+    const mcp = await startMcp({ GOMODEL_BASE_URL: mock.url, GOMODEL_PLAYGROUND: "1" });
+    try {
+      const upsert = await mcp.call("admin_virtual_models", {
+        operation: "upsert_virtual_model",
+        params: {
+          source: "targets-policy-model",
+          targets: [{ provider: "demo-provider", model: "demo-model" }],
+          user_paths: ["/acme/top"],
+        },
+      });
+      expect(upsert.isError).toBe(false);
+
+      const result = await mcp.call("admin_playground", {
+        operation: "send",
+        params: {
+          endpoint: "chat_completions",
+          model: "targets-policy-model",
+          messages: [{ role: "user", content: "hi" }],
+        },
+      });
+      expect(result.isError).toBe(false);
+      const sent = mock.requestBodies.findLast(
+        (entry) => entry.method === "POST" && entry.path === "/v1/chat/completions",
+      );
+      expect(sent!.headers["x-gomodel-user-path"]).toBe("/acme/top");
+      const payload = JSON.parse(result.text);
+      expect(payload.source).toBe("audit");
+      expect(payload.user_path).toBe("/acme/top");
+    } finally {
+      await mcp.close();
+      await mock.close();
+    }
+  });
+
+  test("virtual-model source matches case-insensitively and disabled models are skipped", async () => {
+    const mock = await startMock();
+    const mcp = await startMcp({ GOMODEL_BASE_URL: mock.url, GOMODEL_PLAYGROUND: "1" });
+    try {
+      const upsert = await mcp.call("admin_virtual_models", {
+        operation: "upsert_virtual_model",
+        params: {
+          source: "case-model",
+          target_model: "demo-provider/demo-model",
+          user_paths: ["/acme/case"],
+        },
+      });
+      expect(upsert.isError).toBe(false);
+      const disable = await mcp.call("admin_virtual_models", {
+        operation: "upsert_virtual_model",
+        params: { source: "disabled-model", target_model: "demo-provider/demo-model", enabled: false },
+      });
+      expect(disable.isError).toBe(false);
+
+      const result = await mcp.call("admin_playground", {
+        operation: "send",
+        params: {
+          endpoint: "chat_completions",
+          model: "CASE-MODEL",
+          messages: [{ role: "user", content: "hi" }],
+        },
+      });
+      expect(result.isError).toBe(false);
+      const sent = mock.requestBodies.findLast(
+        (entry) => entry.method === "POST" && entry.path === "/v1/chat/completions",
+      );
+      expect(sent!.headers["x-gomodel-user-path"]).toBe("/acme/case");
+      const payload = JSON.parse(result.text);
+      expect(payload.user_path).toBe("/acme/case");
+    } finally {
+      await mcp.close();
+      await mock.close();
+    }
+  });
+
+  test("no matching policy annotates user_path_auto_resolution instead of failing silently", async () => {
+    const mock = await startMock();
+    const mcp = await startMcp({ GOMODEL_BASE_URL: mock.url, GOMODEL_PLAYGROUND: "1" });
+    try {
+      const result = await mcp.call("admin_playground", {
+        operation: "send",
+        params: {
+          endpoint: "chat_completions",
+          model: "unlisted-model",
+          messages: [{ role: "user", content: "hi" }],
+        },
+      });
+      expect(result.isError).toBe(false);
+      const sent = mock.requestBodies.findLast(
+        (entry) => entry.method === "POST" && entry.path === "/v1/chat/completions",
+      );
+      expect(sent!.headers["x-gomodel-user-path"]).toBeUndefined();
+      const payload = JSON.parse(result.text);
+      expect(payload.source).toBe("audit");
+      expect(payload.user_path_auto_resolution).toBe("none (no user_paths policy matched the model)");
+    } finally {
+      await mcp.close();
+      await mock.close();
+    }
+  });
+
+  test("list_virtual_models failure annotates user_path_auto_resolution", async () => {
+    process.env.MOCK_FAULT = "GET /admin/virtual-models=500";
+    const mock = await startMock();
+    const mcp = await startMcp({ GOMODEL_BASE_URL: mock.url, GOMODEL_PLAYGROUND: "1" });
+    try {
+      const result = await mcp.call("admin_playground", {
+        operation: "send",
+        params: {
+          endpoint: "chat_completions",
+          model: "demo-model",
+          messages: [{ role: "user", content: "hi" }],
+        },
+      });
+      expect(result.isError).toBe(false);
+      const sent = mock.requestBodies.findLast(
+        (entry) => entry.method === "POST" && entry.path === "/v1/chat/completions",
+      );
+      expect(sent!.headers["x-gomodel-user-path"]).toBeUndefined();
+      const payload = JSON.parse(result.text);
+      expect(payload.source).toBe("audit");
+      expect(payload.user_path_auto_resolution).toContain(
+        "none (list_virtual_models lookup failed:",
+      );
+    } finally {
+      await mcp.close();
+      await mock.close();
+      delete process.env.MOCK_FAULT;
+    }
+  });
+
+  test("non-2xx public response names the auto-resolved user_path", async () => {
+    process.env.MOCK_PUBLIC_FAULT = "POST /v1/chat/completions=400";
+    const mock = await startMock();
+    const mcp = await startMcp({ GOMODEL_BASE_URL: mock.url, GOMODEL_PLAYGROUND: "1" });
+    try {
+      const upsert = await mcp.call("admin_virtual_models", {
+        operation: "upsert_virtual_model",
+        params: {
+          source: "fault-policy-model",
+          target_model: "demo-provider/demo-model",
+          user_paths: ["/acme/denied"],
+        },
+      });
+      expect(upsert.isError).toBe(false);
+
+      const result = await mcp.call("admin_playground", {
+        operation: "send",
+        params: {
+          endpoint: "chat_completions",
+          model: "fault-policy-model",
+          messages: [{ role: "user", content: "hi" }],
+        },
+      });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain("auto-resolved user_path: /acme/denied");
+      expect(result.text).toContain("public API 400");
+    } finally {
+      await mcp.close();
+      await mock.close();
+      delete process.env.MOCK_PUBLIC_FAULT;
+    }
+  });
+
+  test("non-2xx public response annotates when auto-resolution found nothing", async () => {
+    process.env.MOCK_PUBLIC_FAULT = "POST /v1/chat/completions=400";
+    const mock = await startMock();
+    const mcp = await startMcp({ GOMODEL_BASE_URL: mock.url, GOMODEL_PLAYGROUND: "1" });
+    try {
+      const result = await mcp.call("admin_playground", {
+        operation: "send",
+        params: {
+          endpoint: "chat_completions",
+          model: "unlisted-model",
+          messages: [{ role: "user", content: "hi" }],
+        },
+      });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain(
+        "user_path auto-resolution: none (no user_paths policy matched the model)",
+      );
+    } finally {
+      await mcp.close();
+      await mock.close();
+      delete process.env.MOCK_PUBLIC_FAULT;
+    }
+  });
+
   test("stream=true assembles the SSE stream into the non-streaming shape", async () => {
     const mock = await startMock();
     const mcp = await startMcp({ GOMODEL_BASE_URL: mock.url, GOMODEL_PLAYGROUND: "1" });

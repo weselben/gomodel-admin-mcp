@@ -293,17 +293,42 @@ function buildRequestBody(args: {
 
 /* ------------------------------ send ---------------------------------- */
 
+/**
+ * Resolve the first user path to auto-send for `model`, mirroring the UI
+ * prefill. Sources, in order:
+ * 1. top-level `user_paths` of the virtual model matching `model`
+ * 2. `user_paths` of the virtual model's `targets[]` entries
+ * Source names match case-insensitively; disabled models are skipped.
+ */
 function firstUserPathPolicy(
   virtualModels: unknown,
   model: string,
 ): string | undefined {
   if (!Array.isArray(virtualModels)) return undefined;
+  const needle = model.trim().toLowerCase();
   for (const entry of virtualModels) {
     if (!entry || typeof entry !== "object") continue;
     const view = entry as Record<string, unknown>;
-    if (view.source !== model) continue;
+    if (typeof view.source !== "string" || view.source.trim().toLowerCase() !== needle) {
+      continue;
+    }
+    if (view.enabled === false) continue;
     const paths = view.user_paths;
     if (Array.isArray(paths) && typeof paths[0] === "string" && paths[0]) return paths[0];
+    const targets = view.targets;
+    if (Array.isArray(targets)) {
+      for (const target of targets) {
+        if (!target || typeof target !== "object") continue;
+        const targetPaths = (target as Record<string, unknown>).user_paths;
+        if (
+          Array.isArray(targetPaths) &&
+          typeof targetPaths[0] === "string" &&
+          targetPaths[0]
+        ) {
+          return targetPaths[0];
+        }
+      }
+    }
   }
   return undefined;
 }
@@ -413,9 +438,11 @@ async function executeSend(
 
 
   // User path: explicit param wins; otherwise auto-send the FIRST entry of the
-  // model's user_paths policy, mirroring the UI prefill.
+  // model's user_paths policy, mirroring the UI prefill. Any lookup failure
+  // or miss is annotated into the result — never silent.
   let userPath = typeof params.user_path === "string" ? params.user_path : undefined;
   let autoResolved = false;
+  let autoResolutionNote: string | undefined;
   if (userPath === undefined) {
     try {
       const virtualModelsText = await deps.readAdmin("list_virtual_models", {}, false);
@@ -423,9 +450,12 @@ async function executeSend(
       if (policyPath) {
         userPath = policyPath;
         autoResolved = true;
+      } else {
+        autoResolutionNote = "none (no user_paths policy matched the model)";
       }
-    } catch {
-      // no virtual-model context — proceed without a user path
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      autoResolutionNote = `none (list_virtual_models lookup failed: ${message})`;
     }
   }
 
@@ -476,8 +506,13 @@ async function executeSend(
     }
   }
   if (!res.ok) {
+    const autoInfo = autoResolved
+      ? ` — auto-resolved user_path: ${userPath} (access denied for this path? pass an explicit user_path param to override)`
+      : autoResolutionNote
+        ? ` — user_path auto-resolution: ${autoResolutionNote}`
+        : "";
     return sendError(
-      `public API ${res.status} ${res.statusText}: ${JSON.stringify(directBody).slice(0, 2000)}`,
+      `public API ${res.status} ${res.statusText}${autoInfo}: ${JSON.stringify(directBody).slice(0, 2000)}`,
     );
   }
 
@@ -485,6 +520,9 @@ async function executeSend(
   // All three fallback branches below are documented behavior (entry not
   // found, detail fetch fails, LOGGING_LOG_BODIES=false), not user errors —
   // they keep `kind: "text"` and surface `source: "direct"` with a warning.
+  const autoResolutionReport = autoResolved
+    ? `resolved: ${userPath}`
+    : autoResolutionNote;
   const found = await findAuditEntry(deps, model, path, startedAt);
   if (found.missing || !found.id) {
     return {
@@ -495,6 +533,7 @@ async function executeSend(
           "audit entry for this request not found within the lookup window — returned the direct API response instead",
         status: res.status,
         latency_ms: latencyMs,
+        user_path_auto_resolution: autoResolutionReport,
         response: directBody,
       }),
     };
@@ -512,6 +551,7 @@ async function executeSend(
         warning: `audit detail for entry ${found.id} could not be fetched — returned the direct API response instead`,
         status: res.status,
         latency_ms: latencyMs,
+        user_path_auto_resolution: autoResolutionReport,
         response: directBody,
       }),
     };
@@ -535,6 +575,7 @@ async function executeSend(
         latency_ms:
           typeof detail.duration_ns === "number" ? detail.duration_ns / 1_000_000 : latencyMs,
         usage: detail.usage,
+        user_path_auto_resolution: autoResolutionReport,
         response: directBody,
       }),
     };
@@ -542,6 +583,9 @@ async function executeSend(
 
   const snapshot = pickAuditSnapshot(detail);
   if (autoResolved) snapshot.user_path = userPath;
+  else if (autoResolutionReport !== undefined) {
+    snapshot.user_path_auto_resolution = autoResolutionReport;
+  }
   return { kind: "text", text: JSON.stringify(snapshot) };
 }
 
