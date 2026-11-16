@@ -124,7 +124,13 @@ Behavior details:
 - User path: if the target model's virtual-model policy declares
   `user_paths`, the first entry is sent automatically (the UI's prefill).
   The `user_path` param overrides it. The user path is only settable through
-  that param — never through headers.
+  that param — never through headers. Auto-resolution is a client-side lookup
+  in `GET /admin/virtual-models`, independent of the auth key's own
+  `user_path`; if the lookup finds nothing (model unlisted, no policy, lookup
+  error), NO user-path header is sent and the result is annotated with
+  `user_path_auto_resolution` (e.g. `none (no user_paths policy matched the
+  model)`). On a non-2xx response the error names the auto-resolved path so
+  access-denied failures are debuggable.
 - Header rules: credential headers (`authorization`, `proxy-authorization`,
   `cookie`, `set-cookie`, `x-api-key`, `api-key`, `x-goog-api-key`,
   `x-auth-token`, `x-access-token`, `x-gomodel-key` — the gateway's
