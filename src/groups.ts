@@ -34,7 +34,7 @@ export const READ_GROUPS: ToolGroup[] = [
   },
   {
     name: "usage",
-    description: "Usage analytics: summaries, breakdowns, per-session, throughput.",
+    description: "Usage analytics: summaries, breakdowns, per-session, throughput, benchmark, invoice.",
     operations: ops([
       ["get_usage_summary", "aggregated requests, tokens, cost"],
       ["get_usage_daily", "breakdown bucketed by period"],
@@ -42,6 +42,10 @@ export const READ_GROUPS: ToolGroup[] = [
       ["get_usage_by_user_path", "grouped by user path"],
       ["get_usage_by_label", "grouped by request label"],
       ["get_usage_by_session", "per detected session"],
+      ["get_usage_breakdown", "pivot by row/column dimensions"],
+      ["get_usage_endpoints", "per-endpoint token and cost aggregates"],
+      ["get_usage_benchmark", "monthly cost per active user of a group"],
+      ["get_usage_invoice", "billed usage as per-customer invoices"],
       ["get_usage_log", "paginated usage log entries"],
       ["get_token_throughput", "live token-throughput window"],
     ]),
@@ -122,6 +126,7 @@ export const READ_GROUPS: ToolGroup[] = [
     operations: ops([
       ["list_mcp_servers", "config-declared and admin-managed"],
       ["get_mcp_server_catalog", "one server's tool/prompt/resource catalog"],
+      ["get_mcp_tool_catalog", "every tool across all servers, with exposure state"],
       ["list_mcp_virtual_servers", "virtual servers and their membership/conflicts"],
     ]),
     kind: "read",
@@ -224,11 +229,15 @@ export const WRITE_GROUPS: ToolGroup[] = [
   },
   {
     name: "mcp_servers_control",
-    description: "MCP server management: upsert, delete, reconnect.",
+    description: "MCP server management: upsert, delete, reconnect, OAuth sign-in/out.",
     operations: ops([
       ["upsert_mcp_server", "create/update an admin-managed MCP server"],
       ["delete_mcp_server", "delete by slug"],
       ["reconnect_mcp_server", "drop and re-establish the connection"],
+      ["start_mcp_server_oauth", "start OAuth sign-in, returns authorization URL"],
+      ["sign_out_mcp_server", "delete stored OAuth tokens and reconnect"],
+      ["upsert_mcp_virtual_server", "create/update a virtual MCP server"],
+      ["delete_mcp_virtual_server", "delete a virtual MCP server by name"],
     ]),
     kind: "write",
   },

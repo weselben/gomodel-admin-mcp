@@ -45,7 +45,8 @@ Areas: `admin_runtime`, `admin_runtime_control`, `admin_usage`,
 
 - **runtime** — feature flags, dashboard settings, provider health
 - **runtime_control** — update settings, trigger runtime refresh
-- **usage** — summary, daily, by model / user path / label / session, log,
+- **usage** — summary, daily, by model / user path / label / session, pivot
+  breakdown, per-endpoint aggregates, per-user benchmark, invoice export, log,
   token throughput
 - **usage_control** — recalculate recorded usage pricing
 - **audit** — log, sessions, stats, detail, conversation, live SSE stream
@@ -65,9 +66,9 @@ Areas: `admin_runtime`, `admin_runtime_control`, `admin_usage`,
   `model`, `provider/model`)
 - **rate_limits** — upsert, delete, reset counters
 - **workflows** / **workflows_control** — list/get, create, deactivate
-- **mcp_servers** / **mcp_servers_control** — list, catalogs, virtual servers;
-  upsert,
-  delete, reconnect
+- **mcp_servers** / **mcp_servers_control** — list, per-server and
+  cross-server tool catalogs, virtual servers; upsert, delete, reconnect,
+  OAuth sign-in/out, virtual-server upsert/delete
 - **docs_*** — live GoModel docs from GitHub (Mintlify navigation index,
   ripgrep-style search, page fetch; anonymous reads, 15-minute cache)
 
